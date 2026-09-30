@@ -297,7 +297,8 @@ class TelegramCommands(TempFiles):
         self.assertEqual(events, ["reply"] * 3 + [("tickets",)])
         self.assertIsNone(self.handle("/tickets"))
         prompt = run_miles.build_ask(date(2026, 9, 30), "", "tickets")
-        self.assertIn("BUSINESS SAVER", prompt)
+        self.assertIn("ESTIMATED MILES", prompt)
+        self.assertIn("short", prompt)
         self.assertIn(run_miles.BOOK_URL, prompt)
         for city in ("Xiamen", "Seoul", "Osaka", "Sapporo"):
             self.assertIn(city, prompt)

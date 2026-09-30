@@ -376,8 +376,8 @@ Say which numbers are from their data and which you looked up; link the sources 
 aren't sure, say so rather than guess. Never ask for or repeat card or account numbers."""
 
 
-# The /tickets list (also posted after every /points update). Fixed layout, one destination per
-# block, so sections() posts Business and Economy as separate, readable messages.
+# The /tickets list (also posted after every /points update). Fixed layout: miles header, then one
+# section per region with Economy and Business side by side, so sections() splits it by region.
 BOOK_URL = "https://www.singaporeair.com/en_UK/sg/home"
 # Every destination on singaporeair.com "Where we fly" (Singapore Airlines and Scoot, not partner
 # airlines), read 2026-09-30. China first: the user's focus, with Xiamen a likely trip next year.
@@ -417,26 +417,34 @@ at or above each bank's minimum (check it; Citi and Standard Chartered use block
 Saver prices (the 2026 chart). Follow this layout exactly: plain text, no markdown, no tables,
 numbers with commas, a blank line between blocks.
 
-✈️ You can use 100,000 miles now
-(one line on any card points that can't be moved yet, and why)
+💰 ESTIMATED MILES
+Total if everything converted: 107,959
+✅ Usable now: 100,000 (CR 250,000 points in 10 blocks)
+⏳ Not yet: SCR 13,651 points (below the 25,000 minimum), CPM 4,983 (below the minimum)
+(Numbers above are an example. Work them out from the data: the total is the script's figure,
+usable counts only whole transfer blocks at or above each bank's minimum. Every "left" and
+"short" below uses the usable figure.)
 
-💼 BUSINESS SAVER · one way / return
+Saver prices · one way / return · miles left after
 
-🇯🇵 Tokyo, Osaka, Sapporo
-54,500 / 109,000 miles
-Left after: 45,500 / ❌ not enough
+🇯🇵 JAPAN
 
-(Cover these, in this region order. Put cities that cost the same miles in one block, as above,
-so each block is one price; prefix each block with its region flag:
+Tokyo, Osaka, Nagoya, Fukuoka
+🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
+💼 Business 54,500 / 109,000 → left 45,500 / ❌ 9,000 short
+
+Sapporo, Okinawa (Scoot)
+🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
+
+(One section per region, in this order, headed by its flag and name in capitals:
 {chr(10).join(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items())}
-Keep "(Scoot)" on Scoot-only cities and put them in ECONOMY only, since Scoot has no business
-class. Leave out any city with no KrisFlyer award. "❌ not enough" when unaffordable.)
+Within a region, put cities that cost the same miles in one block, cheapest block first. Each
+block has the city names, then an Economy line and a Business line so the two cabins compare
+side by side. When the user can't afford a fare, write "❌ N short" with the exact miles missing,
+never just "not enough". Scoot-only cities keep "(Scoot)" and get the Economy line only, since
+Scoot has no business class. Leave out any city with no KrisFlyer award.)
 
-🎯 Next goal: Maldives return 128,000 (28,000 short)
-
-🪑 ECONOMY SAVER · one way / return
-
-(same layout and 🎯 line)
+🎯 Closest next: Tokyo business return, 9,000 short
 
 💡 Before you book
 • Check a seat on singaporeair.com first, then transfer (transfers can't be undone)

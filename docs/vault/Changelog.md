@@ -5,6 +5,7 @@ updated: 2026-09-30
 # Changelog
 
 ## 2026-09-30
+- feat: `/tickets` layout v3: 💰 estimated miles header (total / usable / not yet), one section per region with Economy and Business side by side, "❌ N short" instead of "not enough".
 - feat: daily report moved to 18:00 and adds REGION UPDATES (new deals per region in `TICKET_DESTINATIONS`, China first; only regions with news). Quiet days silent (`DAILY_QUIET=silent` in .env).
 - feat: `/tickets` covers all 133 destinations on singaporeair.com "Where we fly" (SQ + Scoot-only, scraped 2026-09-30 via Chrome; Scoot-only in Economy only).
 - feat: `/tickets` covers popular Asia by region, China first (Xiamen, Shanghai, Beijing, ...), Japan incl. Osaka/Sapporo, Korea, Taiwan, SE Asia, South Asia; same-price cities grouped per block (`TICKET_DESTINATIONS` in [run_miles.py](../../run_miles.py)).
