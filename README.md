@@ -68,3 +68,27 @@ with `claude setup-token` on your computer and put `CLAUDE_CODE_OAUTH_TOKEN=...`
 
 If you run it this way, disable the GitHub workflow (Actions > Miles reports > ... > Disable workflow)
 so it doesn't also run and fail every morning.
+
+## UGREEN NAS (DXP4800 Pro, UGOS Pro) with Docker
+
+The container runs `scheduler.py`, which posts the daily report at 07:53 and the monthly report at
+08:07 on the 1st, Singapore time. If the NAS was off at that time, it catches up the same day.
+Failures are posted to Telegram too.
+
+1. Test on your computer first (see above), so `.env`, `data/` and `state/` are filled in and working.
+   On the NAS, use a subscription token: run `claude setup-token` on your computer and add
+   `CLAUDE_CODE_OAUTH_TOKEN=...` to `.env`. Don't set `CLAUDE_BIN` for Docker.
+2. Install the **Docker** app from the UGOS App Center.
+3. Copy the whole `Miles-Chase` folder, including `.env`, to a shared folder on the NAS,
+   e.g. `docker/Miles-Chase`, using the UGOS Files app or SMB from your computer.
+4. Start it, either:
+   - In the Docker app: Project > Create, choose the `Miles-Chase` folder as the path so it picks up
+     `docker-compose.yml`, then deploy. Or:
+   - Over SSH (Control Panel > Terminal > enable SSH): `cd` to the folder and run
+     `sudo docker compose up -d --build`.
+5. Check the container log shows `scheduler started`. To send a report right now as a test:
+   `sudo docker exec miles-chase python3 run_miles.py daily`
+
+Update your balances by editing `data/my_points.txt` on the NAS share; no restart needed. After changing
+code with `git pull`, restart the container. To update Claude Code, rebuild the image
+(`sudo docker compose build --no-cache && sudo docker compose up -d`).

@@ -1,0 +1,7 @@
+services:
+  miles:
+    build: .
+    container_name: miles-chase
+    restart: unless-stopped
+    volumes:
+      - .:/app
