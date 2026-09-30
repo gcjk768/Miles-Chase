@@ -113,5 +113,6 @@ Messages from any other chat are ignored.
 ## Safety checks before posting
 
 Before anything is posted, the runner hides card-like and long account-like numbers (10 or more digits)
-outside links, removes markdown the prompt forbids, and logs a warning if a report is longer than the
-prompt's limit (2,000 characters daily, 4,000 monthly). Long reports are still posted, split into parts.
+outside links and removes markdown the prompt forbids. If a report is over the prompt's limit
+(2,000 characters daily, 3,500 monthly), Claude is asked once more, without web search, to shorten it
+while keeping every number. If it's still too long for one Telegram message, it's posted in parts.

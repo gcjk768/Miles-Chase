@@ -26,7 +26,7 @@ REPORT SECTIONS
 1. Balances: use MILES AND TRANSFER FEES IF ALL CONVERTED from the input for each card's miles, fee and the totals, and use that same miles total everywhere in the report. Show the total miles and the total transfer fees in S$. If I list family balances, also give our combined total.
 2. Expiry watch: list anything expiring within 12 months of TODAY, soonest first. Mark anything within 3 months URGENT and tell me exactly what to do.
 3. Change vs last month: using HISTORY, show the change for each card and in total, plus my average monthly earning. If HISTORY is empty, skip this.
-4. What I can book: current Saver rates in economy and business, one way and return, per person, from Singapore to Southeast Asia, Japan, Korea, China, India, Australia and NZ, Europe and the US. Mark whether my total covers 1 person and 2 people. If it doesn't, give the gap in miles and how many months it would take at my average earning.
+4. What I can book: current Saver rates in economy and business, one way and return, per person, from Singapore to Southeast Asia, Japan, Korea, China, India, Australia and NZ, Europe and the US. Mark whether my total covers 1 person and 2 people. If it doesn't, give the gap in miles and how many months it would take at my average earning. Use one line per region, in the form "🇯🇵 Japan J [one way] / [return] · Y [one way] / [return] · 1 pax ✅ 2 pax ❌".
 5. Star Alliance backup: for my goal region, list partner airlines I could book with KrisFlyer miles and their miles cost, for when SIA Saver seats are gone.
 6. Upgrade option: the miles needed to upgrade a paid economy or premium economy SIA ticket to business on my goal route, compared with a full business award.
 7. Value check: for my goal route, compare the typical cash fare with the miles cost plus taxes using the value rule.
@@ -41,14 +41,17 @@ REPORT SECTIONS
 16. Yearly summary: if TODAY is in January, add a summary of the past year from HISTORY: miles earned, miles used, trips redeemed and average cents per mile.
 17. Tip of the month: one tip specific to my balances.
 18. Baseline changes: list any baseline fact that has changed, old vs new, so I can update this prompt. If none, write "Baseline unchanged."
-19. Sources: 3 to 6 links.
+19. Sources: 3 links.
 Skip any section I didn't give data for.
 
+BREVITY
+The whole report must fit in one Telegram message. Use at most 4 short lines per section (section 4: one line per region). If a section has nothing new or only unverified information, give it one line or skip it. Say each result once, as a final statement. Never show your working or question yourself in the text.
+
 FORMAT
-Plain text for Telegram. No markdown tables, no asterisks, no # headings. Use short lines with emoji section headers. Write numbers with commas (54,500) and money in S$. Keep it under 4,000 characters. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
+Plain text for Telegram. No markdown tables, no asterisks, no # headings. Use short lines with emoji section headers. Write numbers with commas (54,500) and money in S$. Keep it under 3,500 characters. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
 
 SELF CHECK BEFORE PRINTING
-Recheck every conversion, total, gap, percentage and cents per mile figure. Confirm every date is calculated from TODAY. Confirm the output is under 4,000 characters, contains no account numbers and uses no dashes as connectors. Fix any issue, then print.
+Recheck every conversion, total, gap, percentage and cents per mile figure. Confirm every date is calculated from TODAY. Count the characters and confirm the output is under 3,500, contains no account numbers and uses no dashes as connectors. Fix any issue, then print.
 
 ==============================
 TODAY: [YYYY-MM-DD]

@@ -41,7 +41,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 2000, "monthly": 4000}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 2000, "monthly": 3500}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -177,11 +177,25 @@ def clean_report(report, mode):
     report = "".join(parts)
     report = report.replace("**", "")
     report = re.sub(r"^#+\s*", "", report, flags=re.MULTILINE)
-    target = LENGTH_TARGETS[mode]
-    if len(report) > target:
-        print(f"warning: the {mode} report is {len(report)} characters, over the {target} target; "
-              "posting it in parts", file=sys.stderr)
     return report
+
+
+def shorten(report, mode):
+    """If a report is over its length target, ask Claude once (no web search) to shorten it."""
+    target = LENGTH_TARGETS[mode]
+    if len(report) <= target:
+        return report
+    print(f"{mode} report is {len(report)} characters, over {target}; asking Claude to shorten it",
+          file=sys.stderr)
+    shorter = clean_report(run_claude(
+        f"Shorten this Telegram report to under {target - 200} characters. Keep every emoji section "
+        "header, number, date, URL and warning, and the same plain text style with no markdown. "
+        "Cut repetition and explanations first. Print only the shortened report.\n\n" + report,
+        tools=(),
+    ), mode)
+    if len(shorter) > target:
+        print(f"warning: still {len(shorter)} characters; posting it in parts", file=sys.stderr)
+    return shorter if len(shorter) < len(report) else report
 
 
 def instructions(mode):
@@ -262,8 +276,10 @@ def build_daily(today):
     ])
 
 
-def run_claude(prompt):
-    cmd = [os.environ.get("CLAUDE_BIN") or "claude", "-p", "--allowedTools", "WebSearch", "WebFetch"]
+def run_claude(prompt, tools=("WebSearch", "WebFetch")):
+    cmd = [os.environ.get("CLAUDE_BIN") or "claude", "-p"]
+    if tools:
+        cmd += ["--allowedTools", *tools]
     if os.environ.get("CLAUDE_MODEL"):
         cmd += ["--model", os.environ["CLAUDE_MODEL"]]
     try:
@@ -392,6 +408,7 @@ def main():
         save_prices(prices, today)
     else:
         save_monthly_history(points, today)
+    report = shorten(report, args.mode)
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")

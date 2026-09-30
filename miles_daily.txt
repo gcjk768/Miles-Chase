@@ -26,7 +26,7 @@ THEN ADD
 Alerts: any route where a fare dropped 10% or more vs YESTERDAY, and any SIA fare sale or KrisFlyer Spontaneous Escapes deal covering a watchlist route, with its dates. If nothing, write "No alerts today."
 
 FORMAT
-Plain text for Telegram. No markdown tables, no asterisks, no # headings. One short block per route with emoji markers. Money in S$ with commas. Keep it under 2,000 characters. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
+Plain text for Telegram. No markdown tables, no asterisks, no # headings. One short block per route with emoji markers. Money in S$ with commas. Keep it under 2,000 characters. Say each result once, as a final statement. Never show your working or question yourself in the text. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
 The very last line must be today's prices in this exact format, for the script to save:
 PRICES [YYYY-MM-DD] | [route] Y [price or NA] J [price or NA] | [route] Y [price or NA] J [price or NA]
 
