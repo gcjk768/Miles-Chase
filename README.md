@@ -16,6 +16,7 @@ same day. If a job fails, the error is posted to Telegram.
 
 ## Contents
 
+- [How it fits together](#how-it-fits-together)
 - [Setup on a UGREEN NAS](#setup-on-a-ugreen-nas)
 - [Telegram commands](#telegram-commands)
 - [Your data files](#your-data-files)
@@ -29,6 +30,25 @@ same day. If a job fails, the error is posted to Telegram.
 - [Running on GitHub Actions instead](#running-on-github-actions-instead)
 - [Troubleshooting](#troubleshooting)
 - [Files and tests](#files-and-tests)
+
+## How it fits together
+
+![Architecture: a Docker container on the UGREEN NAS runs the scheduler, Telegram bot, reminders and report runner. The runner uses Claude Code with web search, and everything talks to your private Telegram channel.](docs/architecture.drawio.svg)
+
+1. **`scheduler.py`** is the container's main process. It starts each job at its time, and in between
+   it checks Telegram for your commands.
+2. **`telegram_bot.py`** handles those commands. It edits your files in `data/`, or asks for a report now.
+3. **`run_miles.py`** builds the prompt from the prompt files and your data, then runs `claude -p`.
+   Claude searches the web for award rates, deals and fares, using your Claude subscription.
+4. The runner then checks the report, posts it to your channel, and saves history in `state/`.
+5. **`reminders.py`** posts expiry reminders straight to Telegram. It doesn't use Claude.
+
+The code comes from GitHub, where the tests run on every push. Your balances, history and tokens
+stay in the folder on the NAS.
+
+To edit the diagram, open `docs/architecture.drawio.svg` in [draw.io](https://app.diagrams.net)
+(File → Open from → Device) or in VS Code with the Draw.io Integration extension. Save it in the
+same format, and GitHub shows the updated picture.
 
 ## Setup on a UGREEN NAS
 
@@ -333,6 +353,7 @@ sudo docker logs --tail 50 miles-chase
 | `reminders.py` | Expiry reminders |
 | `state/` | History written by the runner: monthly balances, daily prices, sent reminders |
 | `Dockerfile`, `docker-compose.yml` | The NAS container |
+| `docs/architecture.drawio.svg` | The architecture diagram. It opens in draw.io for editing. |
 | `.github/workflows/` | Tests on every push, and the optional GitHub Actions schedule |
 | `tests/` | Unit tests |
 
