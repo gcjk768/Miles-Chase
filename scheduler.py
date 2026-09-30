@@ -2,7 +2,7 @@
 """Run the miles jobs on schedule, for a NAS or any always-on machine.
 
 Singapore time:
-    07:53 daily       `run_miles.py daily`, the fare tracker (Claude)
+    18:00 daily       `run_miles.py daily`, fare tracker + region deals (Claude); silent if nothing new
     08:07 on the 1st  `run_miles.py monthly`, the coach report (Claude)
     09:00 daily       `run_miles.py reminders`, expiry reminders (no Claude)
     every 30 minutes  `run_miles.py news`, new posts on the miles blogs (no Claude)
@@ -32,7 +32,7 @@ from datetime import datetime, time as clock
 import run_miles
 import telegram_bot
 
-DAILY_AT = clock(7, 53)
+DAILY_AT = clock(18, 0)
 MONTHLY_AT = clock(8, 7)
 REMINDERS_AT = clock(9, 0)
 LAST_RUN = run_miles.STATE / "scheduler.json"

@@ -369,11 +369,13 @@ class Schedule(TempFiles):
 
     def test_due_jobs(self):
         self.assertEqual(self.modes(self.at(2026, 10, 1, 7, 0), {}), [])
-        self.assertEqual(self.modes(self.at(2026, 10, 1, 7, 53), {}), ["daily"])
-        self.assertEqual(self.modes(self.at(2026, 10, 1, 9, 0), {}), ["daily", "monthly", "reminders"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 8, 7), {}), ["monthly"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 9, 0), {}), ["monthly", "reminders"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 18, 0), {}), ["daily", "monthly", "reminders"])
         done = {"daily": "2026-10-01", "monthly": "2026-10", "reminders": "2026-10-01"}
-        self.assertEqual(self.modes(self.at(2026, 10, 1, 12, 0), done), [])
-        self.assertEqual(self.modes(self.at(2026, 10, 2, 9, 0), done), ["daily", "reminders"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 20, 0), done), [])
+        self.assertEqual(self.modes(self.at(2026, 10, 2, 9, 0), done), ["reminders"])
+        self.assertEqual(self.modes(self.at(2026, 10, 2, 18, 0), done), ["daily", "reminders"])
 
     def test_news_runs_once_per_slot(self):
         first = dict(scheduler.due_jobs(self.at(2026, 10, 1, 10, 5), {}))["news"]
@@ -383,7 +385,7 @@ class Schedule(TempFiles):
 
     def test_corrupted_schedule_file_starts_fresh(self):
         scheduler.LAST_RUN.write_text("{not json")
-        last_run = scheduler.load_last_run(self.at(2026, 10, 1, 9, 0))
+        last_run = scheduler.load_last_run(self.at(2026, 10, 1, 19, 0))
         self.assertEqual(last_run.get("daily"), "2026-10-01")  # today's jobs aren't re-fired
         self.assertNotIn("news", last_run)
 

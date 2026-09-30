@@ -6,7 +6,7 @@ with `claude -p` and web search. Everything runs in a Docker container on your N
 
 | What | When (Singapore time) | Uses Claude |
 | --- | --- | --- |
-| **Daily fare tracker**: SIA fares for your watchlist vs Saver awards, a verdict per route, fare drops and deals. On quiet days, one short line. | Every day, 07:53 | Yes |
+| **Daily fare tracker**: SIA fares for your watchlist vs Saver awards, a verdict per route, fare drops and deals, plus new deals per region (China first), only for regions with an update. Quiet days: nothing (DAILY_QUIET=silent). | Every day, 18:00 | Yes |
 | **Monthly coach report**: balances, miles and transfer fees, expiry watch, what you can book, goal progress, which card to use, deals and tips. | 1st of the month, 08:07 | Yes |
 | **New-deal alerts**: a message as soon as The MileLion or Mainly Miles posts about KrisFlyer, SIA, your cards or a city on your watchlist. | Checked every 30 minutes | No |
 | **Expiry reminders**: a message 60, 30 and 7 days before any points or miles expire. | Every day, 09:00 | No |

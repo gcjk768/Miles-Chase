@@ -52,7 +52,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500, "tickets": 7000}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 3500, "monthly": 3500, "ask": 2500, "tickets": 7000}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -356,6 +356,9 @@ def build_daily(today):
         *routes,
         "",
         miles,
+        "",
+        "REGIONS (check for new deals, in this order; filled by the script)",
+        *(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items()),
         "",
         "FARE_DATA (optional, filled by the script from a flight price API)",
         *fare_data,
