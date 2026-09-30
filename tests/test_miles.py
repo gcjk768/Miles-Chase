@@ -105,6 +105,26 @@ class ReportCleaning(unittest.TestCase):
         self.assertEqual(run_miles.split_status("status: news\nbody"), ("body", "NEWS"))
         self.assertEqual(run_miles.split_status("body"), ("body", None))
 
+    def test_sections_split_on_blank_lines_and_keep_title_with_next(self):
+        report = "✈️ TITLE\n\n🚨 Alerts\nsale\n\n\n🗼 Tokyo\nY 800\nJ NA\n\n🔗 SOURCES"
+        self.assertEqual(run_miles.sections(report),
+                         ["✈️ TITLE\n\n🚨 Alerts\nsale", "🗼 Tokyo\nY 800\nJ NA", "🔗 SOURCES"])
+        self.assertEqual(run_miles.sections("one line"), ["one line"])
+
+    def test_send_report_only_first_message_notifies(self):
+        sent = []
+        original = run_miles.telegram_api
+        run_miles.telegram_api = lambda token, method, payload, timeout=30: sent.append(payload)
+        try:
+            count = run_miles.send_report("A\nx\n\nB\ny\n\nC\nz", "t", "c", split=True)
+            self.assertEqual(count, 3)
+            self.assertEqual([p["disable_notification"] for p in sent], [False, True, True])
+            sent.clear()
+            self.assertEqual(run_miles.send_report("A\nx\n\nB\ny", "t", "c", split=False), 1)
+            self.assertEqual(len(sent), 1)
+        finally:
+            run_miles.telegram_api = original
+
     def test_chunks_fit_telegram(self):
         text = "\n".join("line %d " % i + "x" * 300 for i in range(40)) + "\n" + "y" * 9000
         pieces = run_miles.chunks(text)

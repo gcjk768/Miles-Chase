@@ -15,6 +15,9 @@ Environment (or a .env file next to this script, see .env.example):
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   where to post (if unset, the report is printed)
     CLAUDE_MODEL                           optional model override for `claude -p`
     CLAUDE_BIN                             path to `claude` if it isn't on PATH (e.g. under cron)
+    SPLIT_MESSAGES                         "sections" (default) posts each report section as its
+                                           own message, only the first one notifying; "off" posts
+                                           one message
     DAILY_QUIET                            quiet days: "line" (default) posts one short line,
                                            "silent" posts nothing, "off" posts the full report
 """
@@ -73,6 +76,7 @@ URL = re.compile(r"https?://\S+")
 # The daily prompt starts its output with this, so quiet days can be posted as one line.
 STATUS_LINE = re.compile(r"^\s*STATUS:\s*(NEWS|QUIET)\s*$", re.IGNORECASE)
 QUIET_MODES = ("line", "silent", "off")
+SPLIT_MODES = ("sections", "off")
 USER_TEXT_LIMIT = 80  # longest route or goal accepted from Telegram
 
 
@@ -450,13 +454,43 @@ def telegram_api(token, method, payload, timeout=30):
     return reply["result"]
 
 
-def send_telegram(text, token, chat_id):
-    for piece in chunks(text):
+def sections(report):
+    """Split a report into its sections: blocks separated by blank lines.
+
+    A block that is a single line, such as a report title, is joined to the block after it
+    so it doesn't become a message on its own.
+    """
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", report.strip()) if b.strip()]
+    merged, carry = [], None
+    for block in blocks:
+        if carry:
+            block = f"{carry}\n\n{block}"
+            carry = None
+        if "\n" not in block and block is not blocks[-1]:
+            carry = block
+            continue
+        merged.append(block)
+    if carry:
+        merged.append(carry)
+    return merged
+
+
+def send_telegram(text, token, chat_id, silent=False):
+    for i, piece in enumerate(chunks(text)):
         telegram_api(token, "sendMessage", {
             "chat_id": chat_id,
             "text": piece,
             "disable_web_page_preview": True,
+            "disable_notification": silent or i > 0,
         })
+
+
+def send_report(report, token, chat_id, split):
+    """Post a report, one message per section when split; only the first one notifies."""
+    messages = sections(report) if split else [report]
+    for i, message in enumerate(messages):
+        send_telegram(message, token, chat_id, silent=i > 0)
+    return len(messages)
 
 
 def main():
@@ -476,6 +510,9 @@ def main():
     quiet = os.environ.get("DAILY_QUIET", "line").strip().lower()
     if quiet not in QUIET_MODES:
         fail(f"DAILY_QUIET must be one of {', '.join(QUIET_MODES)}, not {quiet!r}")
+    split = os.environ.get("SPLIT_MESSAGES", "sections").strip().lower()
+    if split not in SPLIT_MODES:
+        fail(f"SPLIT_MESSAGES must be one of {', '.join(SPLIT_MODES)}, not {split!r}")
 
     if args.mode == "reminders":
         import reminders
@@ -518,13 +555,17 @@ def main():
         report = shorten(report, args.mode)
 
     if not posting:
-        print(report)
+        if split == "sections":
+            print("\n\n────────── next message ──────────\n\n".join(sections(report)))
+        else:
+            print(report)
         return
     try:
-        send_telegram(report, token, chat_id)
+        count = send_report(report, token, chat_id, split == "sections")
     except (RuntimeError, OSError) as error:
         fail(str(error))
-    print(f"Posted the {args.mode} report to Telegram ({len(report)} characters).")
+    print(f"Posted the {args.mode} report to Telegram ({len(report)} characters, "
+          f"{count} message{'s' if count != 1 else ''}).")
 
 
 if __name__ == "__main__":

@@ -199,7 +199,9 @@ For each report, `run_miles.py`:
    as a KrisFlyer number, except inside links. It also removes markdown.
 4. If a report is over its length limit (2,000 characters daily, 3,500 monthly), asks Claude once
    more, without web search, to shorten it while keeping every number.
-5. Posts it to Telegram and saves history in `state/`.
+5. Posts it to Telegram and saves history in `state/`. Each section (the alerts, each route, each
+   monthly section) goes out as its own message, and only the first one makes a sound. Set
+   `SPLIT_MESSAGES=off` to get one long message instead.
 
 **Quiet days.** The daily report starts with a `STATUS: NEWS` or `STATUS: QUIET` line, which is
 removed before posting. NEWS means an alert, a fare change or a newly found fare. On a quiet day
@@ -257,6 +259,7 @@ All settings go in `.env`:
 | `CLAUDE_CODE_OAUTH_TOKEN` | Your subscription token from `claude setup-token` |
 | `ANTHROPIC_API_KEY` | Pay-per-use alternative to the token. Set only one. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Where reports are posted and commands are read |
+| `SPLIT_MESSAGES` | `sections` (default) posts each report section as its own message, with only the first one making a sound. `off` posts one long message. |
 | `DAILY_QUIET` | Quiet days: `line` (default) posts one short line, `silent` posts nothing, `off` always posts the full report |
 | `CLAUDE_MODEL` | Optional model override for `claude -p` |
 | `CLAUDE_BIN` | Path to `claude`, only needed under cron. Don't set it for Docker. |
