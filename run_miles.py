@@ -52,7 +52,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 3500, "monthly": 3500, "ask": 2500, "tickets": 7000}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 3500, "monthly": 3500, "ask": 2500, "tickets": 14000}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -430,17 +430,27 @@ Saver prices · one way / return · miles left after
 🇯🇵 JAPAN
 
 Tokyo, Osaka, Nagoya, Fukuoka
+🛫 Direct SIA, about 6h 30m to 7h 30m; Tokyo several flights a day
 🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
+✨ Premium Economy 38,000 / 76,000 → left 62,000 / 24,000
 💼 Business 54,500 / 109,000 → left 45,500 / ❌ 9,000 short
+👑 First 80,000 / 160,000 → ❌ 60,000 short (Tokyo only)
+💵 Taxes about S$70 one way / S$140 return
+📈 Advantage if Saver is gone: Economy 38,000, Business 85,000 one way
 
 Sapporo, Okinawa (Scoot)
+🛫 Direct Scoot, about 7h; Sapporo seasonal
 🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
+💵 Taxes about S$60 one way
 
 (One section per region, in this order, headed by its flag and name in capitals:
 {chr(10).join(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items())}
 Within a region, put cities that cost the same miles in one block, cheapest block first. Each
-block has the city names, then an Economy line and a Business line so the two cabins compare
-side by side. When the user can't afford a fare, write "❌ N short" with the exact miles missing,
+block has the city names, then these lines as in the example: 🛫 direct or via where, flight
+time and how often; one line per cabin actually sold on the route (Economy, Premium Economy,
+Business, First, in that order) so the cabins compare side by side; 💵 estimated taxes; and
+📈 Advantage prices for when Saver is sold out. Say "about" for estimates and leave a line out
+rather than guess it. The numbers in the example are placeholders; look up the real ones. When the user can't afford a fare, write "❌ N short" with the exact miles missing,
 never just "not enough". Scoot-only cities keep "(Scoot)" and get the Economy line only, since
 Scoot has no business class. Leave out any city with no KrisFlyer award.)
 
