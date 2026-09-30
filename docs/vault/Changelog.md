@@ -5,6 +5,7 @@ updated: 2026-09-30
 # Changelog
 
 ## 2026-09-30
+- fix: `telegram_api` waits and retries on 429 Too Many Requests (group limit ~20 msgs/min hit by the long /tickets list); typing indicator uses `retries=0` so the heartbeat loop never sleeps.
 - feat: `/tickets` detail per block: 🛫 route/flight time/frequency, all cabins sold (Economy, Premium Economy, Business, First), 💵 est. taxes, 📈 Advantage fallback prices. Length target 14,000.
 - feat: `/tickets` layout v3: 💰 estimated miles header (total / usable / not yet), one section per region with Economy and Business side by side, "❌ N short" instead of "not enough".
 - feat: daily report moved to 18:00 and adds REGION UPDATES (new deals per region in `TICKET_DESTINATIONS`, China first; only regions with news). Quiet days silent (`DAILY_QUIET=silent` in .env).

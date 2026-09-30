@@ -303,6 +303,36 @@ class TelegramCommands(TempFiles):
         for city in ("Xiamen", "Seoul", "Osaka", "Sapporo"):
             self.assertIn(city, prompt)
 
+    def test_telegram_waits_and_retries_when_rate_limited(self):
+        import urllib.error
+        calls, sleeps = [], []
+
+        class Ok(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        def fake_urlopen(request, timeout):
+            calls.append(1)
+            if len(calls) == 1:
+                body = io.BytesIO(b'{"ok":false,"error_code":429,"parameters":{"retry_after":7}}')
+                raise urllib.error.HTTPError("u", 429, "Too Many Requests", {}, body)
+            return Ok(b'{"ok":true,"result":{}}')
+
+        saved = (run_miles.urllib.request.urlopen, run_miles.time.sleep)
+        run_miles.urllib.request.urlopen, run_miles.time.sleep = fake_urlopen, sleeps.append
+        try:
+            self.assertEqual(run_miles.telegram_api("t", "sendMessage", {}), {})
+            self.assertEqual((len(calls), sleeps), (2, [8]))
+            calls.clear()
+            with self.assertRaises(RuntimeError):  # no retries asked for: fail at once
+                run_miles.telegram_api("t", "sendChatAction", {}, retries=0)
+            self.assertEqual(len(calls), 1)
+        finally:
+            run_miles.urllib.request.urlopen, run_miles.time.sleep = saved
+
     def test_topic_chat_id(self):
         self.assertEqual(run_miles.split_chat_id("-100123/2765"), ("-100123", 2765))
         self.assertEqual(run_miles.split_chat_id(-100123), ("-100123", None))
@@ -472,7 +502,7 @@ class JobFailures(TempFiles):
         calls = []
         original = run_miles.telegram_api
 
-        def fake_api(token, method, payload, timeout=30):
+        def fake_api(token, method, payload, timeout=30, retries=3):
             calls.append((method, payload))
             raise RuntimeError("Telegram down")  # must not break the job
 

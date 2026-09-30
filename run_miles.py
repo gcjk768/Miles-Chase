@@ -32,6 +32,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
+TELEGRAM_RETRIES = 3  # times to retry after "429 Too Many Requests"
 LENGTH_TARGETS = {"daily": 3500, "monthly": 3500, "ask": 2500, "tickets": 14000}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
@@ -574,18 +576,29 @@ def chunks(text, limit=TELEGRAM_LIMIT):
     return pieces
 
 
-def telegram_api(token, method, payload, timeout=30):
+def telegram_api(token, method, payload, timeout=30, retries=TELEGRAM_RETRIES):
     """Call a Telegram Bot API method and return its result, or raise RuntimeError."""
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/{method}",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            reply = json.load(response)
-    except urllib.error.HTTPError as error:
-        raise RuntimeError(f"Telegram {method} failed: {error.read().decode(errors='replace')}")
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                reply = json.load(response)
+            break
+        except urllib.error.HTTPError as error:
+            body = error.read().decode(errors="replace")
+            # Groups allow about 20 bot messages a minute; a long report can hit that. Wait as told.
+            if error.code == 429 and attempt < retries:
+                try:
+                    wait = int(json.loads(body)["parameters"]["retry_after"])
+                except (ValueError, KeyError, TypeError):
+                    wait = 30
+                time.sleep(min(wait, 120) + 1)
+                continue
+            raise RuntimeError(f"Telegram {method} failed: {body}")
     if not reply.get("ok"):
         raise RuntimeError(f"Telegram {method} failed: {reply}")
     return reply["result"]
@@ -633,7 +646,8 @@ def send_typing(token, chat_id):
     payload = {"chat_id": chat, "action": "typing"}
     if topic:
         payload["message_thread_id"] = topic
-    telegram_api(token, "sendChatAction", payload, timeout=5)  # short: runs in the heartbeat loop
+    # Short and no retries: it runs in the heartbeat loop.
+    telegram_api(token, "sendChatAction", payload, timeout=5, retries=0)
 
 
 def send_telegram(text, token, chat_id, silent=False):
