@@ -1,68 +1,241 @@
 # Miles Chase
 
-Posts two KrisFlyer reports to a Telegram channel, written by Claude:
+A Telegram bot that tracks your KrisFlyer miles and Singapore Airlines award options. It collects
+points on Citi Rewards, Citi PremierMiles and Standard Chartered Rewards. Claude writes the reports
+with `claude -p` and web search. Everything runs in a Docker container on your NAS.
 
-- **Daily** (07:53 SGT): SIA cash fares for your watchlist vs Saver awards, with a verdict per route.
-  On quiet days (no fare changes or deals) it posts one short line instead; see `DAILY_QUIET`.
-- **Monthly** (1st of the month, 08:07 SGT): balances, expiry watch, what you can book, deals and tips.
-- **Expiry reminders** (09:00 SGT, NAS): a message 60, 30 and 7 days before any points or miles expire.
-  No Claude needed.
-
-A GitHub Actions workflow runs `run_miles.py` on schedule. The script fills today's date, your balances,
-last month's history and yesterday's prices into `miles_monthly.txt` / `miles_daily.txt`, runs
-`claude -p` with web search, posts the result to Telegram, and commits the history to `state/`.
-
-## Setup
-
-1. **Make this repository private.** The reports and `state/` contain your balances, so the workflow
-   refuses to run in a public repo. Settings > General > Danger Zone > Change visibility.
-2. **Create a Telegram bot.** Message @BotFather, send `/newbot` and copy the token. Add the bot to your
-   private channel as an admin. To get the channel's chat ID, post something in the channel, then open
-   `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id` (it starts with `-100`).
-3. **Add secrets** under Settings > Secrets and variables > Actions:
-   - `CLAUDE_CODE_OAUTH_TOKEN`: runs `claude -p` on your Claude Pro or Max subscription. On your own computer,
-     install Claude Code (`npm install -g @anthropic-ai/claude-code`), run `claude setup-token` and paste the
-     token it prints. Or use `ANTHROPIC_API_KEY` from console.anthropic.com to pay per use instead.
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-   - Optional: a variable (not secret) `CLAUDE_MODEL` to pick a model.
-4. **Fill in your data** and replace every `[placeholder]`:
-   - `data/my_points.txt`: your balances. Update it each month before the 1st.
-   - `data/watchlist.txt`: routes to track. `MY MILES` is worked out from your card points before
-     transfer: Citi Rewards and SC points at 25,000 = 10,000 miles (so 52,000 points = 20,800 miles),
-     PremierMiles and KrisFlyer 1:1. Both reports use the same total. Transfer fees are one per card
-     (S$27.25 Citi Rewards, S$27.25 PremierMiles, about S$27 SC; set in `TRANSFER_FEES` in `run_miles.py`). Add a `MY MILES: <number>` line
-     to the watchlist to override it.
-5. **Test it**: Actions > Miles reports > Run workflow, pick `daily` or `monthly`.
-
-## Files
-
-| File | What it is | Who edits it |
+| What | When (Singapore time) | Uses Claude |
 | --- | --- | --- |
-| `miles_monthly.txt`, `miles_daily.txt` | The prompts. Update the baseline facts when a report lists "Baseline changes". | You |
-| `data/my_points.txt`, `data/watchlist.txt` | Your inputs. Lines starting with `#` are ignored. | You |
-| `data/fare_data.txt` | Optional fares from a flight price API. If present, Claude uses it instead of searching. | You or a future script |
-| `state/` | Monthly balance history and daily PRICES lines. | The workflow |
+| **Daily fare tracker**: SIA fares for your watchlist vs Saver awards, a verdict per route, fare drops and deals. On quiet days, one short line. | Every day, 07:53 | Yes |
+| **Monthly coach report**: balances, miles and transfer fees, expiry watch, what you can book, goal progress, which card to use, deals and tips. | 1st of the month, 08:07 | Yes |
+| **Expiry reminders**: a message 60, 30 and 7 days before any points or miles expire. | Every day, 09:00 | No |
+| **Telegram commands**: update balances, the watchlist and your goal, or run a report now. | Any time | No |
 
-## Run on your computer or a NAS (no GitHub Actions)
+If the NAS is off at a scheduled time, that job runs when it's back on, as long as it's still the
+same day. If a job fails, the error is posted to Telegram.
 
-Needs Python 3.9+, Node.js 18+ and Claude Code. Nothing leaves your machine except the Claude call
-and the Telegram post, so the repo can stay public as long as you don't push `data/` or `state/` changes.
+## Contents
+
+- [Setup on a UGREEN NAS](#setup-on-a-ugreen-nas)
+- [Telegram commands](#telegram-commands)
+- [Your data files](#your-data-files)
+- [How miles and fees are calculated](#how-miles-and-fees-are-calculated)
+- [How the reports work](#how-the-reports-work)
+- [Settings](#settings)
+- [Keeping it up to date](#keeping-it-up-to-date)
+- [Running on a computer](#running-on-a-computer)
+- [Running on GitHub Actions instead](#running-on-github-actions-instead)
+- [Troubleshooting](#troubleshooting)
+- [Files and tests](#files-and-tests)
+
+## Setup on a UGREEN NAS
+
+Tested for a DXP4800 Pro on UGOS Pro, but any machine with Docker works the same way.
+
+### 1. Create the Telegram bot
+
+1. In Telegram, message **@BotFather**, send `/newbot` and follow the steps. Copy the **bot token**.
+2. Create a **private** channel (it will show your balances) and add the bot as an **admin**.
+   The bot must be an admin to read your commands there.
+3. Post any message in the channel, then open
+   `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser. Copy the `chat` → `id`
+   value, which starts with `-100`. That's your **chat ID**.
+
+### 2. Get a Claude token
+
+The reports run on your Claude Pro or Max subscription. On your computer:
 
 ```sh
-git clone https://github.com/gcjk768/Miles-Chase.git && cd Miles-Chase
-npm install -g @anthropic-ai/claude-code
-claude                      # sign in once with your Claude subscription, then /exit
-cp .env.example .env        # add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-# edit data/my_points.txt and data/watchlist.txt
-
-python3 run_miles.py daily --dry-run   # check the assembled prompt, no Claude call
-python3 run_miles.py daily --no-send   # run Claude, print instead of posting
-python3 run_miles.py daily             # run Claude and post to Telegram
+npm install -g @anthropic-ai/claude-code   # needs Node.js 18 or later
+claude setup-token                         # sign in, then copy the token it prints
 ```
 
-To schedule it, add these lines with `crontab -e` (or the NAS's task scheduler). Cron has a minimal
-PATH, so set `CLAUDE_BIN` in `.env` to the output of `which claude`, and use full paths below:
+Reports count towards your subscription's usage limits. To pay per use instead, use an API key from
+console.anthropic.com as `ANTHROPIC_API_KEY`. Set only one of the two.
+
+### 3. Fill in the folder
+
+Download this repository (Code → Download ZIP, or `git clone`), then in the `Miles-Chase` folder:
+
+1. Copy `.env.example` to `.env` and fill it in:
+   ```
+   CLAUDE_CODE_OAUTH_TOKEN=<token from step 2>
+   TELEGRAM_BOT_TOKEN=<token from step 1>
+   TELEGRAM_CHAT_ID=<chat ID from step 1>
+   ```
+   Keep `.env` private. It's never committed to git.
+2. Edit `data/my_points.txt` with your balances and `data/watchlist.txt` with your routes. See
+   [Your data files](#your-data-files). Replace every `[placeholder]`; the reports stop with an
+   error if one is left.
+
+### 4. Start it on the NAS
+
+1. Install **Docker** from the UGOS App Center.
+2. Copy the whole `Miles-Chase` folder, including `.env`, to a shared folder on the NAS
+   (for example `docker/Miles-Chase`) with the UGOS Files app or over SMB.
+3. Start the container, either:
+   - **Docker app:** Project → Create, choose the `Miles-Chase` folder so it picks up
+     `docker-compose.yml`, then deploy; or
+   - **SSH** (Control Panel → Terminal → enable SSH), then in the folder:
+     ```sh
+     sudo docker compose up -d --build
+     ```
+4. Check the container log shows `scheduler started`.
+5. Send a test report now:
+   ```sh
+   sudo docker exec miles-chase python3 run_miles.py daily --full
+   ```
+   Then send `/points` in your channel. The bot replies within a few seconds, or after a report
+   finishes if one is running.
+
+## Telegram commands
+
+Post these in your channel. Messages from any other chat are ignored.
+
+| Command | What it does |
+| --- | --- |
+| `/points` | Your balances, the miles they're worth and the fees to transfer them |
+| `/points CR 52000` | Set a balance: `CR`, `CPM`, `SCR` or `KF`. The expiry is kept. |
+| `/points SCR 31000 exp 2027-06` | Set a balance and its expiry month |
+| `/watch` | List your watchlist routes, numbered |
+| `/watch add SIN Bali, Jun 2027` | Add a route |
+| `/watch remove 2` | Remove route number 2 |
+| `/goal` | Show your goal |
+| `/goal Tokyo business, 2 pax, Mar 2027` | Set your goal (tracked in the monthly report) |
+| `/goal clear` | Remove your goal |
+| `/run daily` | Run the daily report now, always in full |
+| `/run monthly` | Run the monthly report now |
+| `/help` | List the commands |
+
+## Your data files
+
+Both are plain text. Lines starting with `#` are ignored. You can edit them on the NAS share or with
+the commands above; changes apply on the next run, with no restart needed.
+
+**`data/my_points.txt`**: your balances. Update them each month before the 1st, or with `/points`.
+
+```
+CR: 52000 exp 2027-01        Citi Rewards points and expiry month
+CPM: 20000                   Citi PremierMiles (they don't expire)
+SCR: 31000 exp 2027-06       Standard Chartered Rewards points and expiry month
+KF: 12000 exp 2029-01        miles already in KrisFlyer
+Goal: Tokyo business, 2 pax, Mar 2027        optional
+Family: Dad KF 30000                         optional, for combined totals
+Spend this month: CR online 600              optional, for bonus cap warnings
+Card fee months: CR Mar, CPM Jul, SCR Nov    optional, for fee waiver reminders
+```
+
+**`data/watchlist.txt`**: one route per line for the daily tracker, such as `SIN Tokyo, Mar 2027`.
+
+## How miles and fees are calculated
+
+The script works out miles from your card points **before transfer**, and all reports and `/points`
+use the same figures:
+
+| Card | Rate | Transfer fee |
+| --- | --- | --- |
+| Citi Rewards (`CR`) | 25,000 points = 10,000 miles, so 52,000 points = 20,800 miles | S$27.25 |
+| Citi PremierMiles (`CPM`) | 1 point = 1 mile | S$27.25 |
+| SC Rewards (`SCR`) | 25,000 points = 10,000 miles | about S$27 |
+| KrisFlyer (`KF`) | already miles | none |
+
+The fee is one per card, since each card's points are moved in one transfer. A card with no points
+adds no fee. For example:
+
+```
+CR: 52,000 points = 20,800 miles, transfer fee S$27.25
+CPM: 20,000 points = 20,000 miles, transfer fee S$27.25
+SCR: 31,000 points = 12,400 miles, transfer fee about S$27.00
+KF: 12,000 miles already in KrisFlyer
+Total: 65,200 miles
+Transfer fees to pay: about S$81.50 (one transfer per card)
+```
+
+The rates and fees are in `CONVERSIONS` and `TRANSFER_FEES` at the top of `run_miles.py`. To use
+your own miles figure in the daily report, add `MY MILES: 65000` to `data/watchlist.txt`.
+
+## How the reports work
+
+For each report, `run_miles.py`:
+
+1. Builds the prompt from `miles_daily.txt` or `miles_monthly.txt`. It fills in today's date, your
+   balances, the calculated miles and fees, last month's balances and yesterday's fares.
+2. Runs `claude -p` with web search (at most 6 searches daily, 15 monthly).
+3. Checks the output before posting. It hides card numbers and any run of 10 or more digits, such
+   as a KrisFlyer number, except inside links. It also removes markdown.
+4. If a report is over its length limit (2,000 characters daily, 3,500 monthly), asks Claude once
+   more, without web search, to shorten it while keeping every number.
+5. Posts it to Telegram and saves history in `state/`.
+
+**Quiet days.** The daily report starts with a `STATUS: NEWS` or `STATUS: QUIET` line, which is
+removed before posting. NEWS means an alert, a fare change or a newly found fare. On a quiet day
+you get one line:
+`✈️ 30 Sep: no fare changes or deals on your watchlist today. Send /run daily for the full report.`
+See `DAILY_QUIET` in [Settings](#settings).
+
+**Expiry reminders.** These read the `exp YYYY-MM` dates in `data/my_points.txt` and treat each as
+the end of that month. A message is sent at 60, 30 and 7 days before, each one only once:
+
+```
+⏰ Citi Rewards: 52,000 points (20,800 miles) expire at the end of Oct 2026, in 31 days. Transfer fee S$27.25.
+Search Saver seats on singaporeair.com, then transfer in the Citi Mobile app. Allow 1 to 3 working days.
+```
+
+**What to expect from fares.** Claude reports only fares it actually saw on a page, and writes
+"not found" otherwise. Live SIA fares are often not visible to web search, so expect some "not found"
+routes. Claude also can't see award seat availability; always search Saver seats on singaporeair.com
+before transferring points. For reliable fares, put results from a flight price API in
+`data/fare_data.txt`, and Claude will use those instead of searching.
+
+## Settings
+
+All settings go in `.env`:
+
+| Setting | What it does |
+| --- | --- |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Your subscription token from `claude setup-token` |
+| `ANTHROPIC_API_KEY` | Pay-per-use alternative to the token. Set only one. |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Where reports are posted and commands are read |
+| `DAILY_QUIET` | Quiet days: `line` (default) posts one short line, `silent` posts nothing, `off` always posts the full report |
+| `CLAUDE_MODEL` | Optional model override for `claude -p` |
+| `CLAUDE_BIN` | Path to `claude`, only needed under cron. Don't set it for Docker. |
+
+The schedule times are `DAILY_AT`, `MONTHLY_AT` and `REMINDERS_AT` in `scheduler.py`. After changing
+them, restart the container.
+
+## Keeping it up to date
+
+- **Balances:** use `/points`, or edit `data/my_points.txt` before the 1st of each month.
+- **Baseline facts:** the prompts hold award rates, fees and earn rates checked in Sept 2026. When a
+  monthly report lists something under "Baseline changes", update that figure in `miles_monthly.txt`
+  and `miles_daily.txt`. If it's a transfer fee, also update `TRANSFER_FEES` in `run_miles.py`.
+- **Code updates:** replace the code files on the NAS, or run `git pull`, then restart the
+  container. Keep your `.env`, `data/` and `state/`.
+- **Claude Code updates:** rebuild the image:
+  ```sh
+  sudo docker compose build --no-cache && sudo docker compose up -d
+  ```
+
+## Running on a computer
+
+This is useful for testing before moving to the NAS. You need Python 3.9+ and Claude Code.
+
+```sh
+claude                                   # sign in once with your subscription, then /exit
+cp .env.example .env                     # add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+
+python3 run_miles.py daily --dry-run     # show the prompt that would be sent, no Claude call
+python3 run_miles.py daily --no-send     # run Claude, print the report instead of posting
+python3 run_miles.py daily --full        # run Claude and post the full report
+python3 run_miles.py monthly             # run Claude and post
+python3 run_miles.py reminders --dry-run # show any expiry reminders due today
+python3 scheduler.py                     # run everything on schedule, plus Telegram commands
+```
+
+Local runs write to `state/`. When moving to the NAS, copy `state/` too so the history comes along.
+
+To schedule with cron instead of `scheduler.py`, set `CLAUDE_BIN` in `.env` (from `which claude`)
+and use full paths. The machine's clock must be on Singapore time:
 
 ```cron
 53 7 * * * cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py daily >> miles.log 2>&1
@@ -70,77 +243,60 @@ PATH, so set `CLAUDE_BIN` in `.env` to the output of `which claude`, and use ful
 0 9 * * *  cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py reminders >> miles.log 2>&1
 ```
 
-Those times assume the machine's clock is on Singapore time. Moving from computer to NAS: copy the
-folder including `.env`, `data/` and `state/` so the history comes along. On a headless NAS, sign in
-with `claude setup-token` on your computer and put `CLAUDE_CODE_OAUTH_TOKEN=...` in the NAS's `.env`.
+Telegram commands only work while `scheduler.py` is running.
 
-If you run it this way, disable the GitHub workflow (Actions > Miles reports > ... > Disable workflow)
-so it doesn't also run and fail every morning.
+## Running on GitHub Actions instead
 
-## UGREEN NAS (DXP4800 Pro, UGOS Pro) with Docker
+`.github/workflows/miles.yml` can run the daily and monthly reports on GitHub instead of the NAS.
+Expiry reminders and Telegram commands don't run there.
 
-The container runs `scheduler.py`, which posts the daily report at 07:53 and the monthly report at
-08:07 on the 1st, Singapore time. If the NAS was off at that time, it catches up the same day.
-Failures are posted to Telegram too.
+1. **Make the repository private.** The workflow commits your balance history to `state/`, so it
+   refuses to run in a public repository.
+2. Add repository secrets (Settings → Secrets and variables → Actions): `CLAUDE_CODE_OAUTH_TOKEN`
+   (or `ANTHROPIC_API_KEY`), `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Optionally add a variable
+   `CLAUDE_MODEL`.
+3. Commit your filled-in `data/` files.
+4. Test it with Actions → Miles reports → Run workflow.
 
-1. Test on your computer first (see above), so `.env`, `data/` and `state/` are filled in and working.
-   On the NAS, use a subscription token: run `claude setup-token` on your computer and add
-   `CLAUDE_CODE_OAUTH_TOKEN=...` to `.env`. Don't set `CLAUDE_BIN` for Docker.
-2. Install the **Docker** app from the UGOS App Center.
-3. Copy the whole `Miles-Chase` folder, including `.env`, to a shared folder on the NAS,
-   e.g. `docker/Miles-Chase`, using the UGOS Files app or SMB from your computer.
-4. Start it, either:
-   - In the Docker app: Project > Create, choose the `Miles-Chase` folder as the path so it picks up
-     `docker-compose.yml`, then deploy. Or:
-   - Over SSH (Control Panel > Terminal > enable SSH): `cd` to the folder and run
-     `sudo docker compose up -d --build`.
-5. Check the container log shows `scheduler started`. To send a report right now as a test:
-   `sudo docker exec miles-chase python3 run_miles.py daily`
+**If you use the NAS**, disable this workflow (Actions → Miles reports → ··· → Disable workflow) so it
+doesn't also run, and fail, every morning.
 
-Update your balances by editing `data/my_points.txt` on the NAS share; no restart needed. After changing
-code with `git pull`, restart the container. To update Claude Code, rebuild the image
-(`sudo docker compose build --no-cache && sudo docker compose up -d`).
+## Troubleshooting
 
-## Telegram commands (NAS only)
-
-While the container runs, the bot answers commands posted in your channel (`TELEGRAM_CHAT_ID`).
-Messages from any other chat are ignored.
-
-| Command | What it does |
+| Problem | Fix |
 | --- | --- |
-| `/points` | Show your balances, the miles they're worth before transfer and the fees to transfer them |
-| `/points CR 52000` | Set a balance (`CR`, `CPM`, `SCR` or `KF`); the expiry is kept |
-| `/points SCR 31000 exp 2027-06` | Set a balance and its expiry |
-| `/watch` | List the watchlist routes, numbered |
-| `/watch add SIN Bali, Jun 2027` | Add a route |
-| `/watch remove 2` | Remove route number 2 |
-| `/goal` | Show your goal |
-| `/goal Tokyo business, 2 pax, Mar 2027` | Set your goal (used by the monthly report) |
-| `/goal clear` | Remove your goal |
-| `/run daily`, `/run monthly` | Run a report now (the daily one always posts in full) |
-| `/help` | List the commands |
+| `still has a placeholder` | Replace every `[...]` in `data/my_points.txt` or `data/watchlist.txt` |
+| Telegram `chat not found` | Check `TELEGRAM_CHAT_ID`, including the `-100` at the start |
+| The bot ignores commands | Make the bot an admin of the channel, and post in that channel |
+| `the claude command isn't installed` | On a computer, install Claude Code. Under cron, set `CLAUDE_BIN`. |
+| Claude errors about login or auth | Run `claude setup-token` again and update `.env`, then restart the container |
+| No daily message | Probably a quiet day with `DAILY_QUIET=silent`. Check the container log. |
+| Fares show "not found" | See [What to expect from fares](#how-the-reports-work) |
 
-## Safety checks before posting
+To see what the container is doing:
 
-Before anything is posted, the runner hides card-like and long account-like numbers (10 or more digits)
-outside links and removes markdown the prompt forbids. If a report is over the prompt's limit
-(2,000 characters daily, 3,500 monthly), Claude is asked once more, without web search, to shorten it
-while keeping every number. If it's still too long for one Telegram message, it's posted in parts.
+```sh
+sudo docker logs --tail 50 miles-chase
+```
 
-## Quiet days and expiry reminders
+## Files and tests
 
-The daily report starts with a `STATUS: NEWS` or `STATUS: QUIET` line that the runner removes. On a
-quiet day (no alert, no fare change) it follows `DAILY_QUIET` in `.env`: `line` (default) posts one
-short line, `silent` posts nothing, `off` always posts the full report. `/run daily` always posts in full.
+| File | Purpose |
+| --- | --- |
+| `miles_daily.txt`, `miles_monthly.txt` | The prompts: rules, baseline facts and report layout |
+| `data/my_points.txt`, `data/watchlist.txt` | Your balances, goal and routes |
+| `data/fare_data.txt` | Optional fares from a flight price API |
+| `run_miles.py` | Builds the prompt, runs `claude -p`, checks and posts the report |
+| `scheduler.py` | Runs the jobs on schedule and answers Telegram commands (the container's main process) |
+| `telegram_bot.py` | The Telegram commands |
+| `reminders.py` | Expiry reminders |
+| `state/` | History written by the runner: monthly balances, daily prices, sent reminders |
+| `Dockerfile`, `docker-compose.yml` | The NAS container |
+| `.github/workflows/` | Tests on every push, and the optional GitHub Actions schedule |
+| `tests/` | Unit tests |
 
-Expiry reminders read the `exp YYYY-MM` dates in `data/my_points.txt`, count each as the end of that
-month, and send one message at 60, 30 and 7 days before. Each goes out once
-(`state/reminders_sent.json`). Preview with `python3 run_miles.py reminders --dry-run`.
-
-## Tests
+Run the tests. They need no network, Claude or Telegram:
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
-
-They need no network, Claude or Telegram, and run on GitHub on every push.
