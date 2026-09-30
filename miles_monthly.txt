@@ -23,7 +23,7 @@ Cents per mile = (cash fare minus award taxes) divided by miles needed.
 GOOD: 2 cents or more. FAIR: 1.5 to 2 cents. POOR: below 1.5 cents.
 
 REPORT SECTIONS
-1. Balances: convert each card to KrisFlyer miles, then give the total miles and the total transfer fees in S$. If I list family balances, also give our combined total.
+1. Balances: use MILES AND TRANSFER FEES IF ALL CONVERTED from the input for each card's miles, fee and the totals, and use that same miles total everywhere in the report. Show the total miles and the total transfer fees in S$. If I list family balances, also give our combined total.
 2. Expiry watch: list anything expiring within 12 months of TODAY, soonest first. Mark anything within 3 months URGENT and tell me exactly what to do.
 3. Change vs last month: using HISTORY, show the change for each card and in total, plus my average monthly earning. If HISTORY is empty, skip this.
 4. What I can book: current Saver rates in economy and business, one way and return, per person, from Singapore to Southeast Asia, Japan, Korea, China, India, Australia and NZ, Europe and the US. Mark whether my total covers 1 person and 2 people. If it doesn't, give the gap in miles and how many months it would take at my average earning.

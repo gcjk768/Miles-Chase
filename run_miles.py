@@ -48,14 +48,18 @@ SGT = timezone(timedelta(hours=8))
 # Claude sometimes copies the brackets from the prompt's format example: PRICES [2026-09-30] | ...
 PRICES_LINE = re.compile(r"^PRICES \[?(\d{4}-\d{2}-\d{2})\]?(?=\s|$).*$")
 
-# Bank points to KrisFlyer miles: (points per transfer block, miles per block, minimum points).
-# Only whole blocks count towards MY MILES, since that's what can actually be transferred.
+# Card points to KrisFlyer miles, counted before transfer at the straight rate:
+# (points, miles), so 52,000 Citi Rewards points count as 20,800 miles.
 CONVERSIONS = {
-    "CR": (25000, 10000, 25000),   # Citi Rewards
-    "SCR": (25000, 10000, 25000),  # Standard Chartered Rewards
-    "CPM": (1, 1, 10000),          # Citi PremierMiles, 1:1 with a 10,000 minimum
-    "KF": (1, 1, 0),               # already in KrisFlyer
+    "CR": (25000, 10000),   # Citi Rewards
+    "SCR": (25000, 10000),  # Standard Chartered Rewards
+    "CPM": (1, 1),          # Citi PremierMiles
+    "KF": (1, 1),           # already in KrisFlyer
 }
+# Fee in S$ for moving a card's points to KrisFlyer in one transfer, from the prompts'
+# baseline facts. Update these when a report lists them under "Baseline changes".
+TRANSFER_FEES = {"CR": 27.25, "CPM": 27.25, "SCR": 27.00}
+APPROX_FEES = {"SCR"}  # SC's fee is "about S$27 per rewards code"
 BALANCE_LINE = re.compile(r"^\s*([A-Za-z]+)\s*:\s*([\d,]+)")
 
 # Card numbers (groups of 4) and long digit runs such as KrisFlyer or account numbers.
@@ -106,14 +110,40 @@ def parse_balances(lines):
     return balances
 
 
+def card_miles(card, points):
+    """KrisFlyer miles a card's points are worth before transfer."""
+    per_points, miles = CONVERSIONS[card]
+    return points * miles // per_points
+
+
 def miles_available(balances):
-    """KrisFlyer miles you could have now: KF miles plus whole transfer blocks of bank points."""
-    total = 0
+    """Total KrisFlyer miles if every card's points were converted."""
+    return sum(card_miles(card, points) for card, points in balances.items())
+
+
+def transfer_fee(card, points):
+    """S$ to transfer a card's points in one go; nothing for KrisFlyer or an empty card."""
+    return TRANSFER_FEES.get(card, 0) if points > 0 else 0
+
+
+def miles_summary(balances):
+    """Per-card miles and transfer fees plus totals, for the prompt and /points."""
+    lines = []
     for card, points in balances.items():
-        per_block, miles_per_block, minimum = CONVERSIONS[card]
-        if points >= minimum:
-            total += points // per_block * miles_per_block
-    return total
+        if card == "KF":
+            lines.append(f"KF: {points:,} miles already in KrisFlyer")
+            continue
+        line = f"{card}: {points:,} points = {card_miles(card, points):,} miles"
+        fee = transfer_fee(card, points)
+        if fee:
+            line += f", transfer fee {'about ' if card in APPROX_FEES else ''}S${fee:,.2f}"
+        lines.append(line)
+    total_fee = sum(transfer_fee(card, points) for card, points in balances.items())
+    approx = any(card in APPROX_FEES and points > 0 for card, points in balances.items())
+    return lines + [
+        f"Total: {miles_available(balances):,} miles",
+        f"Transfer fees to pay: {'about ' if approx else ''}S${total_fee:,.2f} (one transfer per card)",
+    ]
 
 
 def set_balance(card, points, expiry=None):
@@ -178,6 +208,9 @@ def build_monthly(today):
         "",
         "MY POINTS THIS MONTH",
         *points,
+        "",
+        "MILES AND TRANSFER FEES IF ALL CONVERTED (calculated by the script, before transfer)",
+        *miles_summary(parse_balances(points)),
         "",
         "HISTORY (previous months, oldest first, filled by the script)",
         *history,

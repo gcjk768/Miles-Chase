@@ -81,5 +81,5 @@ def points_command(args):
 
 def balances_summary():
     lines = run_miles.read_lines(run_miles.MY_POINTS)
-    miles = run_miles.miles_available(run_miles.parse_balances(lines))
-    return "\n".join(lines + ["", f"Miles available now: {miles:,}"])
+    summary = run_miles.miles_summary(run_miles.parse_balances(lines))
+    return "\n".join(lines + ["", "If you convert everything:"] + summary)

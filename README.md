@@ -25,9 +25,11 @@ last month's history and yesterday's prices into `miles_monthly.txt` / `miles_da
    - Optional: a variable (not secret) `CLAUDE_MODEL` to pick a model.
 4. **Fill in your data** and replace every `[placeholder]`:
    - `data/my_points.txt`: your balances. Update it each month before the 1st.
-   - `data/watchlist.txt`: routes to track. `MY MILES` is worked out from your balances: KrisFlyer
-     miles plus bank points in whole transfer blocks (25,000 Citi Rewards or SC points = 10,000 miles;
-     Citi PremierMiles 1:1 once you have 10,000). Add a `MY MILES: <number>` line to override it.
+   - `data/watchlist.txt`: routes to track. `MY MILES` is worked out from your card points before
+     transfer: Citi Rewards and SC points at 25,000 = 10,000 miles (so 52,000 points = 20,800 miles),
+     PremierMiles and KrisFlyer 1:1. Both reports use the same total. Transfer fees are one per card
+     (S$27.25 Citi Rewards, S$27.25 PremierMiles, about S$27 SC; set in `TRANSFER_FEES` in `run_miles.py`). Add a `MY MILES: <number>` line
+     to the watchlist to override it.
 5. **Test it**: Actions > Miles reports > Run workflow, pick `daily` or `monthly`.
 
 ## Files
@@ -102,7 +104,7 @@ Messages from any other chat are ignored.
 
 | Command | What it does |
 | --- | --- |
-| `/points` | Show your balances and the miles they add up to |
+| `/points` | Show your balances, the miles they're worth before transfer and the fees to transfer them |
 | `/points CR 52000` | Set a balance (`CR`, `CPM`, `SCR` or `KF`); the expiry is kept |
 | `/points SCR 31000 exp 2027-06` | Set a balance and its expiry |
 | `/run daily`, `/run monthly` | Run a report now |
