@@ -174,8 +174,8 @@ def run(mode, *options, attempt=1):
             "as CLAUDE_CODE_OAUTH_TOKEN, then restart the container."))
         return
 
-    if mode == "ask":  # one-off question: no retries or self-repair, just say it failed
-        telegram(f"⚠️ /ask failed:\n{tail}\n\nTry again in a few minutes.")
+    if mode in ("ask", "tickets"):  # on demand: no retries or self-repair, just say it failed
+        telegram(f"⚠️ /{mode} failed:\n{tail}\n\nTry again in a few minutes.")
         return
 
     if TRANSIENT.search(output) or code == -1:

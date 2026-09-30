@@ -4,6 +4,7 @@ Run with: python3 -m unittest discover -s tests -v
 No network, Claude or Telegram needed: file paths point at a temporary folder.
 """
 
+import io
 import shutil
 import sys
 import tempfile
@@ -292,8 +293,11 @@ class TelegramCommands(TempFiles):
             telegram_bot.poll("token", "-100", lambda *a: events.append(a))
         finally:
             run_miles.telegram_api = original
-        self.assertEqual(events, ["reply"] * 3 + [("ask", telegram_bot.TICKETS_QUESTION)])
-        self.assertLessEqual(len(telegram_bot.TICKETS_QUESTION), run_miles.ASK_LIMIT)
+        self.assertEqual(events, ["reply"] * 3 + [("tickets",)])
+        self.assertIsNone(self.handle("/tickets"))
+        prompt = run_miles.build_ask(date(2026, 9, 30), "", "tickets")
+        self.assertIn("BUSINESS SAVER", prompt)
+        self.assertIn(run_miles.BOOK_URL, prompt)
 
     def test_topic_chat_id(self):
         self.assertEqual(run_miles.split_chat_id("-100123/2765"), ("-100123", 2765))
@@ -465,11 +469,12 @@ class NewsAlerts(TempFiles):
 
     def setUp(self):
         super().setUp()
-        self.feeds = {name: list(self.FEED_A) for name in news_watch.FEEDS}
+        self.all_feeds = {**news_watch.FEEDS, **news_watch.VIDEO_FEEDS, **news_watch.MIXED_VIDEO_FEEDS}
+        self.feeds = {name: list(self.FEED_A) for name in self.all_feeds}
         self.sent = []
 
     def fetch(self, url):
-        name = next(n for n, u in news_watch.FEEDS.items() if u == url)
+        name = next(n for n, u in self.all_feeds.items() if u == url)
         if self.feeds[name] is None:
             raise OSError("feed down")
         return self.feeds[name]
@@ -491,6 +496,38 @@ class NewsAlerts(TempFiles):
         self.assertIn("https://a/3", self.sent[0])
         self.assertNotIn("New cafe", self.sent[0])
         self.assertEqual(self.check()[0], 0)  # not sent again
+
+    def test_videos(self):
+        self.check()
+        self.feeds["Suitesmile (YouTube)"] = [("Lounge tour", "https://y/1", "")] + self.FEED_A
+        self.feeds["HoneyMoneySG"] = [("Best miles card 2026", "https://y/2", ""),
+                                      ("Pick ETFs, not stocks", "https://y/3", "")] + self.FEED_A
+        self.assertEqual(self.check()[0], 2)
+        self.assertEqual(len(self.sent), 1)  # no blog posts, so only the video message
+        self.assertTrue(self.sent[0].startswith("🎥 New miles videos"))
+        self.assertIn("https://y/1", self.sent[0])  # miles channel: every video
+        self.assertIn("https://y/2", self.sent[0])  # mixed channel: only miles videos
+        self.assertNotIn("ETFs", self.sent[0])
+
+    def test_youtube_atom_feed_parses(self):
+        xml = (b'<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">'
+               b'<entry><title>KrisFlyer tips</title><link rel="alternate" href="https://y/9"/>'
+               b'<media:group><media:description>Saver awards</media:description></media:group>'
+               b'</entry></feed>')
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        original = news_watch.urllib.request.urlopen
+        news_watch.urllib.request.urlopen = lambda *a, **k: Response(xml)
+        try:
+            self.assertEqual(news_watch.fetch("https://y"), [("KrisFlyer tips", "https://y/9", "Saver awards")])
+        finally:
+            news_watch.urllib.request.urlopen = original
 
     def test_watchlist_cities_match_and_short_words_dont_misfire(self):
         self.check()

@@ -7,6 +7,7 @@ Usage:
     python run_miles.py reminders  # expiry reminders, no Claude needed
     python run_miles.py news       # new posts on the miles blogs, no Claude needed
     python run_miles.py ask "Transfer CR now for Tokyo?"   # one-off question to Claude
+    python run_miles.py tickets    # award tickets your miles can book (Claude)
 
 Options:
     --dry-run   print the assembled prompt and stop (no Claude call, nothing saved)
@@ -51,7 +52,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500, "tickets": 3000}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -372,11 +373,48 @@ Say which numbers are from their data and which you looked up; link the sources 
 aren't sure, say so rather than guess. Never ask for or repeat card or account numbers."""
 
 
-def build_ask(today, question):
-    check_user_text(question, "question", limit=ASK_LIMIT)
+# The /tickets list (also posted after every /points update). Fixed layout, one destination per
+# block, so sections() posts Business and Economy as separate, readable messages.
+BOOK_URL = "https://www.singaporeair.com/en_UK/sg/home"
+TICKETS_PROMPT = f"""List the KrisFlyer Saver award tickets from Singapore the user can book now.
+Count only miles they can actually move: KrisFlyer miles, plus card points in whole transfer blocks
+at or above each bank's minimum (check it; Citi and Standard Chartered use blocks). Look up current
+Saver prices (the 2026 chart). Follow this layout exactly: plain text, no markdown, no tables,
+numbers with commas, a blank line between blocks.
+
+✈️ You can use 100,000 miles now
+(one line on any card points that can't be moved yet, and why)
+
+💼 BUSINESS SAVER · one way / return
+
+🇯🇵 Tokyo
+54,500 / 109,000 miles
+Left after: 45,500 / ❌ not enough
+
+(6 to 8 popular destinations, nearest first, same 3 lines each; "❌ not enough" when unaffordable)
+
+🎯 Next goal: Sydney return 144,000 (44,000 short)
+
+🪑 ECONOMY SAVER · one way / return
+
+(same layout and 🎯 line)
+
+💡 Before you book
+• Check a seat on singaporeair.com first, then transfer (transfers can't be undone)
+• (at most 2 more short tips, e.g. taxes, transfer time)
+
+🔗 Book: {BOOK_URL} → Book Trip → Redeem flights
+📚 Prices: (one source link)"""
+
+
+def build_ask(today, question, mode="ask"):
+    if mode == "tickets":
+        question = TICKETS_PROMPT
+    else:
+        check_user_text(question, "question", limit=ASK_LIMIT)
     points = read_lines(MY_POINTS)
     return "\n".join([
-        ASK_PROMPT.format(limit=LENGTH_TARGETS["ask"]),
+        ASK_PROMPT.format(limit=LENGTH_TARGETS[mode]),
         "",
         SEPARATOR,
         f"TODAY: {today.isoformat()}",
@@ -554,7 +592,7 @@ def send_report(report, token, chat_id, split):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news", "ask"]))
+    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news", "ask", "tickets"]))
     parser.add_argument("question", nargs="*", help="ask only: the question for Claude")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-send", action="store_true")
@@ -598,20 +636,21 @@ def main():
         print(f"Sent {count} expiry reminder(s).")
         return
 
-    if args.mode == "ask":
+    if args.mode in ("ask", "tickets"):
         try:
-            prompt = build_ask(today, " ".join(args.question).strip())
+            prompt = build_ask(today, " ".join(args.question).strip(), args.mode)
         except ValueError as error:
             fail(str(error))
         if args.dry_run:
             print(prompt)
             return
-        answer = shorten(clean_report(run_claude(prompt), "ask"), "ask")
+        answer = shorten(clean_report(run_claude(prompt), args.mode), args.mode)
         if not posting:
             print(answer)
             return
         try:
-            send_telegram(answer, token, chat_id)
+            # The ticket list is laid out in blocks, so it posts one message per section.
+            send_report(answer, token, chat_id, args.mode == "tickets" and split == "sections")
         except (RuntimeError, OSError) as error:
             fail(str(error))
         print(f"Posted the answer to Telegram ({len(answer)} characters).")

@@ -1,7 +1,9 @@
-"""New-deal alerts from miles blogs, checked every 30 minutes. No Claude needed.
+"""New-deal alerts from miles blogs and new miles videos on YouTube, checked every 30 minutes.
+No Claude needed.
 
-Reads the blogs' RSS feeds and sends one Telegram message listing any new post that mentions
-KrisFlyer, Singapore Airlines, your cards or a city on your watchlist. Posts already seen are
+Reads the blogs' RSS feeds and the YouTube channels' feeds, and sends one Telegram message listing
+any new post that mentions KrisFlyer, Singapore Airlines, your cards or a city on your watchlist,
+and any new video from a miles channel (general money channels only when it's about miles). Posts already seen are
 remembered in state/news_seen.json. The first check only records what's there, so you don't get
 a flood of old posts.
 """
@@ -18,6 +20,21 @@ FEEDS = {
     "The MileLion": "https://milelion.com/feed/",
     "Mainly Miles": "https://mainlymiles.com/feed/",
 }
+YOUTUBE = "https://www.youtube.com/feeds/videos.xml?channel_id="
+# Every video from these channels is about miles.
+VIDEO_FEEDS = {
+    "The MileLion (YouTube)": YOUTUBE + "UC0RTkb7cFoJObjaSZJikG9g",
+    "Suitesmile (YouTube)": YOUTUBE + "UCx_t4hnsalB8LJ0XtNfY1nA",
+    "Lets Get To The Points": YOUTUBE + "UCaE0KM4BEXBR1969_Urs6mw",
+}
+# Mostly investing, so only their videos that mention miles count.
+MIXED_VIDEO_FEEDS = {
+    "HoneyMoneySG": YOUTUBE + "UCTCSq-mUx0ZtGhJeb7sn92Q",
+    "Kelvin Learns Investing": YOUTUBE + "UCaJh-OfqbuiVyewBTddcr3g",
+}
+VIDEO_KEYWORDS = ["miles", "mile", "points", "air miles", "business class", "lounge", "credit card"]
+ATOM = "{http://www.w3.org/2005/Atom}"
+MEDIA = "{http://search.yahoo.com/mrss/}"
 SEEN = run_miles.STATE / "news_seen.json"
 SEEN_KEPT = 500
 MAX_ITEMS_PER_MESSAGE = 10
@@ -43,7 +60,7 @@ def matches(text, words):
 
 
 def fetch(url, timeout=20):
-    """(title, link, summary) for each item in an RSS feed."""
+    """(title, link, summary) for each item in an RSS feed or entry in an Atom (YouTube) feed."""
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Miles Chase alerts)"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         root = ET.fromstring(response.read())
@@ -54,6 +71,12 @@ def fetch(url, timeout=20):
         summary = html.unescape(TAG.sub(" ", item.findtext("description") or ""))
         if title and link:
             items.append((title, link, " ".join(summary.split())[:400]))
+    for entry in root.iter(ATOM + "entry"):
+        title = (entry.findtext(ATOM + "title") or "").strip()
+        link = entry.find(ATOM + "link")
+        summary = entry.findtext(f"{MEDIA}group/{MEDIA}description") or ""
+        if title and link is not None and link.get("href"):
+            items.append((title, link.get("href"), " ".join(summary.split())[:400]))
     return items
 
 
@@ -74,7 +97,7 @@ def check(send, fetch=fetch, save=True):
     seen = load_seen()
     words = keywords()
     found, errors = [], []
-    for name, url in FEEDS.items():
+    for name, url in {**FEEDS, **VIDEO_FEEDS, **MIXED_VIDEO_FEEDS}.items():
         try:
             items = fetch(url)
         except (OSError, ET.ParseError, ValueError) as error:
@@ -88,15 +111,22 @@ def check(send, fetch=fetch, save=True):
                 continue
             known.add(link)
             links.append(link)
-            if not first_read and matches(f"{title} {summary}", words):
+            if first_read:
+                continue
+            if name in VIDEO_FEEDS or matches(
+                    f"{title} {summary}", words + (VIDEO_KEYWORDS if name in MIXED_VIDEO_FEEDS else [])):
                 found.append((name, title, link))
         seen[name] = links[-SEEN_KEPT:]
-    if found:
-        lines = ["🆕 New from the miles blogs"]
-        for name, title, link in found[:MAX_ITEMS_PER_MESSAGE]:
+    posts = [f for f in found if f[0] in FEEDS]
+    videos = [f for f in found if f[0] not in FEEDS]
+    for header, items in (("🆕 New from the miles blogs", posts), ("🎥 New miles videos", videos)):
+        if not items:
+            continue
+        lines = [header]
+        for name, title, link in items[:MAX_ITEMS_PER_MESSAGE]:
             lines += ["", title, f"{name} · {link}"]
-        if len(found) > MAX_ITEMS_PER_MESSAGE:
-            lines += ["", f"and {len(found) - MAX_ITEMS_PER_MESSAGE} more"]
+        if len(items) > MAX_ITEMS_PER_MESSAGE:
+            lines += ["", f"and {len(items) - MAX_ITEMS_PER_MESSAGE} more"]
         send("\n".join(lines))
     if save:
         SEEN.parent.mkdir(parents=True, exist_ok=True)

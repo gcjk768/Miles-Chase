@@ -22,14 +22,6 @@ import reminders
 import run_miles
 
 OFFSET = run_miles.STATE / "telegram_offset.txt"
-# Posted by Claude after every /points update.
-TICKETS_QUESTION = (
-    "Which KrisFlyer Saver award tickets from Singapore can I book now with my total miles? "
-    "Two sections, BUSINESS then ECONOMY: popular destinations, one way and return, miles each "
-    "costs and miles left. End each section with the next 2 tickets just out of reach and how "
-    "many miles short. Last line: the official singaporeair.com page to book a KrisFlyer "
-    "redemption (check the link works)."
-)
 HELP = (
     "Commands:\n"
     "/points: show balances\n"
@@ -43,6 +35,7 @@ HELP = (
     "/goal Tokyo business, 2 pax, Mar 2027: set the goal\n"
     "/goal clear: remove the goal\n"
     "/run daily or /run monthly: run a report now\n"
+    "/tickets: Business and Economy tickets your miles can book now\n"
     "/ask <question>: ask Claude, using your balances (takes a minute or two)"
 )
 
@@ -75,7 +68,7 @@ def poll(token, chat_id, run_report, timeout=20):
             balances_changed |= reply.startswith("Updated ")
     # After the balance reply, and once per batch, so four quick /points updates cost one Claude run.
     if balances_changed:
-        run_report("ask", TICKETS_QUESTION)
+        run_report("tickets")
 
 
 def handle(text, run_report):
@@ -97,6 +90,9 @@ def handle(text, run_report):
             run_report(mode, "--full") if mode == "daily" else run_report(mode)
             return None
         return "Use /run daily or /run monthly"
+    if command == "/tickets":
+        run_report("tickets")
+        return None
     if command == "/ask":
         question = " ".join(words[1:])
         try:
