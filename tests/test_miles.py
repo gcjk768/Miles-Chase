@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import reminders  # noqa: E402
 import run_miles  # noqa: E402
 import scheduler  # noqa: E402
+import news_watch  # noqa: E402
 import telegram_bot  # noqa: E402
 
 POINTS = """# comment
@@ -44,6 +45,9 @@ class TempFiles(unittest.TestCase):
             (run_miles, "MONTHLY_HISTORY"): self.dir / "monthly_history.txt",
             (reminders, "SENT"): self.dir / "reminders_sent.json",
             (telegram_bot, "OFFSET"): self.dir / "offset.txt",
+            (news_watch, "SEEN"): self.dir / "news_seen.json",
+            (scheduler, "LAST_RUN"): self.dir / "scheduler.json",
+            (scheduler, "HEARTBEAT"): self.dir / "heartbeat",
         }
         for (module, name), path in paths.items():
             self.saved[(module, name)] = getattr(module, name)
@@ -293,22 +297,166 @@ class ExpiryReminders(TempFiles):
         self.assertEqual(len(messages), 4)
 
 
-class Schedule(unittest.TestCase):
+class Schedule(TempFiles):
     @staticmethod
     def at(*args):
         return datetime(*args, tzinfo=run_miles.SGT)
 
+    def modes(self, now, last_run):
+        return [mode for mode, _ in scheduler.due_jobs(now, last_run) if mode != "news"]
+
     def test_due_jobs(self):
-        self.assertEqual(scheduler.due_jobs(self.at(2026, 10, 1, 7, 0), {}), [])
-        self.assertEqual(scheduler.due_jobs(self.at(2026, 10, 1, 7, 53), {}), [("daily", "2026-10-01")])
-        self.assertEqual(
-            [mode for mode, _ in scheduler.due_jobs(self.at(2026, 10, 1, 9, 0), {})],
-            ["daily", "monthly", "reminders"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 7, 0), {}), [])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 7, 53), {}), ["daily"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 9, 0), {}), ["daily", "monthly", "reminders"])
         done = {"daily": "2026-10-01", "monthly": "2026-10", "reminders": "2026-10-01"}
-        self.assertEqual(scheduler.due_jobs(self.at(2026, 10, 1, 12, 0), done), [])
-        self.assertEqual(
-            [mode for mode, _ in scheduler.due_jobs(self.at(2026, 10, 2, 9, 0), done)],
-            ["daily", "reminders"])
+        self.assertEqual(self.modes(self.at(2026, 10, 1, 12, 0), done), [])
+        self.assertEqual(self.modes(self.at(2026, 10, 2, 9, 0), done), ["daily", "reminders"])
+
+    def test_news_runs_once_per_slot(self):
+        first = dict(scheduler.due_jobs(self.at(2026, 10, 1, 10, 5), {}))["news"]
+        same_slot = scheduler.due_jobs(self.at(2026, 10, 1, 10, 29), {"news": first})
+        self.assertNotIn("news", dict(same_slot))
+        self.assertIn("news", dict(scheduler.due_jobs(self.at(2026, 10, 1, 10, 30), {"news": first})))
+
+    def test_corrupted_schedule_file_starts_fresh(self):
+        scheduler.LAST_RUN.write_text("{not json")
+        last_run = scheduler.load_last_run(self.at(2026, 10, 1, 9, 0))
+        self.assertEqual(last_run.get("daily"), "2026-10-01")  # today's jobs aren't re-fired
+        self.assertNotIn("news", last_run)
+
+
+class JobFailures(TempFiles):
+    """How the scheduler reacts when a job fails, with fake jobs, repair and Telegram."""
+
+    def setUp(self):
+        super().setUp()
+        self.sent, self.repairs, self.outputs = [], [], []
+        self.saved_fns = (scheduler.run_job, scheduler.telegram)
+        scheduler.run_job = lambda mode, *options: self.outputs.pop(0)
+        scheduler.telegram = self.sent.append
+        scheduler.retries.clear()
+        scheduler.repaired_today.clear()
+        scheduler.last_reported.clear()
+        import repair
+        self.repair_module, self.saved_repair = repair, repair.repair
+
+        def fake_repair(mode, output):
+            self.repairs.append(mode)
+            return "Cause: bad line\nFixed: data/my_points.txt\nYou need to: nothing"
+        repair.repair = fake_repair
+
+    def tearDown(self):
+        scheduler.run_job, scheduler.telegram = self.saved_fns
+        self.repair_module.repair = self.saved_repair
+        super().tearDown()
+
+    def test_success(self):
+        self.outputs = [(0, "Posted")]
+        scheduler.run("daily")
+        self.assertEqual((self.sent, self.repairs, scheduler.retries), ([], [], {}))
+
+    def test_temporary_problem_is_retried_then_reported(self):
+        self.outputs = [(1, "urlopen error timed out")]
+        scheduler.run("daily")
+        self.assertIn("daily", scheduler.retries)
+        self.assertEqual(self.sent, [])
+        self.outputs = [(1, "HTTP 503")]
+        scheduler.run("daily", attempt=scheduler.MAX_RETRIES + 1)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("temporary problem", self.sent[0])
+        self.assertEqual(self.repairs, [])
+
+    def test_sign_in_problem_asks_for_a_new_token(self):
+        self.outputs = [(1, "API Error: 401 authentication_error Invalid bearer token")]
+        scheduler.run("monthly")
+        self.assertIn("claude setup-token", self.sent[0])
+        self.assertEqual(self.repairs, [])
+
+    def test_other_failure_gets_one_repair_and_rerun(self):
+        self.outputs = [(1, "error: data/my_points.txt still has a placeholder"), (0, "Posted")]
+        scheduler.run("daily")
+        self.assertEqual(self.repairs, ["daily"])
+        self.assertIn("Self-repair by Claude", self.sent[0])
+        self.assertIn("Re-ran it and it worked", self.sent[0])
+        # A second failure the same day isn't repaired again, just reported.
+        self.outputs = [(1, "error: something else")]
+        scheduler.last_reported.clear()
+        scheduler.run("daily")
+        self.assertEqual(self.repairs, ["daily"])
+        self.assertEqual(self.sent[-1], "⚠️ Miles daily failed.\nerror: something else")
+
+    def test_self_repair_can_be_switched_off(self):
+        import os
+        os.environ["SELF_REPAIR"] = "off"
+        try:
+            self.outputs = [(1, "error: broken")]
+            scheduler.run("daily")
+        finally:
+            del os.environ["SELF_REPAIR"]
+        self.assertEqual(self.repairs, [])
+        self.assertEqual(len(self.sent), 1)
+
+    def test_execute_times_out_and_keeps_heartbeat(self):
+        code, output = scheduler.execute([sys.executable, "-c", "import time; time.sleep(30)"], timeout=1)
+        self.assertEqual(code, -1)
+        self.assertIn("timed out", output)
+        self.assertTrue(scheduler.HEARTBEAT.exists())
+
+
+class NewsAlerts(TempFiles):
+    FEED_A = [("KrisFlyer Spontaneous Escapes October", "https://a/1", "30% off Saver"),
+              ("Best coffee in town", "https://a/2", "nothing to do with miles")]
+
+    def setUp(self):
+        super().setUp()
+        self.feeds = {name: list(self.FEED_A) for name in news_watch.FEEDS}
+        self.sent = []
+
+    def fetch(self, url):
+        name = next(n for n, u in news_watch.FEEDS.items() if u == url)
+        if self.feeds[name] is None:
+            raise OSError("feed down")
+        return self.feeds[name]
+
+    def check(self):
+        return news_watch.check(self.sent.append, fetch=self.fetch)
+
+    def test_first_read_only_records(self):
+        self.assertEqual(self.check(), (0, []))
+        self.assertEqual(self.sent, [])
+
+    def test_new_matching_posts_are_sent_once(self):
+        self.check()
+        name = next(iter(news_watch.FEEDS))
+        self.feeds[name] = [("Citi transfer bonus to KrisFlyer", "https://a/3", ""),
+                            ("New cafe opens", "https://a/4", "")] + self.FEED_A
+        self.assertEqual(self.check()[0], 1)
+        self.assertIn("Citi transfer bonus to KrisFlyer", self.sent[0])
+        self.assertIn("https://a/3", self.sent[0])
+        self.assertNotIn("New cafe", self.sent[0])
+        self.assertEqual(self.check()[0], 0)  # not sent again
+
+    def test_watchlist_cities_match_and_short_words_dont_misfire(self):
+        self.check()
+        name = next(iter(news_watch.FEEDS))
+        self.feeds[name] = [("Tokyo hotel deals", "https://a/5", ""),
+                            ("Asia's best rooftop bars", "https://a/6", "")]
+        self.check()
+        self.assertIn("Tokyo hotel deals", self.sent[0])
+        self.assertNotIn("rooftop", self.sent[0])  # "SIA" doesn't match inside "Asia"
+
+    def test_a_feed_down_on_first_read_doesnt_flood_later(self):
+        names = list(news_watch.FEEDS)
+        self.feeds[names[1]] = None
+        count, errors = self.check()
+        self.assertEqual((count, len(errors)), (0, 1))
+        self.feeds[names[1]] = list(self.FEED_A)
+        self.assertEqual(self.check()[0], 0)  # its old posts are only recorded
+
+    def test_corrupted_seen_file(self):
+        news_watch.SEEN.write_text("[broken")
+        self.assertEqual(self.check(), (0, []))
 
 
 if __name__ == "__main__":

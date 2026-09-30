@@ -5,3 +5,5 @@ miles.log
 state/scheduler.json
 state/telegram_offset.txt
 state/reminders_sent.json
+state/heartbeat
+state/news_seen.json

@@ -5,6 +5,7 @@ Usage:
     python run_miles.py daily      # daily fare tracker
     python run_miles.py monthly    # monthly miles coach report
     python run_miles.py reminders  # expiry reminders, no Claude needed
+    python run_miles.py news       # new posts on the miles blogs, no Claude needed
 
 Options:
     --dry-run   print the assembled prompt and stop (no Claude call, nothing saved)
@@ -510,7 +511,7 @@ def send_report(report, token, chat_id, split):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders"]))
+    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news"]))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-send", action="store_true")
     parser.add_argument("--full", action="store_true")
@@ -527,6 +528,18 @@ def main():
     split = os.environ.get("SPLIT_MESSAGES", "sections").strip().lower()
     if split not in SPLIT_MODES:
         fail(f"SPLIT_MESSAGES must be one of {', '.join(SPLIT_MODES)}, not {split!r}")
+
+    if args.mode == "news":
+        import news_watch
+        send = (lambda text: send_telegram(text, token, chat_id)) if posting else print
+        try:
+            count, errors = news_watch.check(send, save=bool(posting))
+        except (RuntimeError, OSError) as error:
+            fail(str(error))
+        for error in errors:
+            print(f"warning: couldn't read {error}", file=sys.stderr)
+        print(f"Found {count} new post(s).")
+        return
 
     if args.mode == "reminders":
         import reminders

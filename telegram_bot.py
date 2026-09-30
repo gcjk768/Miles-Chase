@@ -38,7 +38,10 @@ HELP = (
 
 def poll(token, chat_id, run_report, timeout=20):
     """Wait up to `timeout` seconds for new messages and handle any commands."""
-    offset = int(OFFSET.read_text()) if OFFSET.exists() else 0
+    try:
+        offset = int(OFFSET.read_text()) if OFFSET.exists() else 0
+    except (ValueError, OSError):
+        offset = 0
     updates = run_miles.telegram_api(token, "getUpdates", {
         "offset": offset,
         "timeout": timeout,

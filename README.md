@@ -8,11 +8,13 @@ with `claude -p` and web search. Everything runs in a Docker container on your N
 | --- | --- | --- |
 | **Daily fare tracker**: SIA fares for your watchlist vs Saver awards, a verdict per route, fare drops and deals. On quiet days, one short line. | Every day, 07:53 | Yes |
 | **Monthly coach report**: balances, miles and transfer fees, expiry watch, what you can book, goal progress, which card to use, deals and tips. | 1st of the month, 08:07 | Yes |
+| **New-deal alerts**: a message as soon as The MileLion or Mainly Miles posts about KrisFlyer, SIA, your cards or a city on your watchlist. | Checked every 30 minutes | No |
 | **Expiry reminders**: a message 60, 30 and 7 days before any points or miles expire. | Every day, 09:00 | No |
 | **Telegram commands**: update balances, the watchlist and your goal, or run a report now. | Any time | No |
 
 If the NAS is off at a scheduled time, that job runs when it's back on, as long as it's still the
-same day. If a job fails, the error is posted to Telegram.
+same day. The app looks after itself: it retries temporary errors, lets Claude repair broken data,
+and restarts if it ever gets stuck. See [Staying healthy](#staying-healthy).
 
 ## Contents
 
@@ -22,6 +24,8 @@ same day. If a job fails, the error is posted to Telegram.
 - [Your data files](#your-data-files)
 - [How miles and fees are calculated](#how-miles-and-fees-are-calculated)
 - [How the reports work](#how-the-reports-work)
+- [New-deal alerts](#new-deal-alerts)
+- [Staying healthy](#staying-healthy)
 - [Privacy and security](#privacy-and-security)
 - [After the first reports](#after-the-first-reports)
 - [Settings](#settings)
@@ -42,6 +46,10 @@ same day. If a job fails, the error is posted to Telegram.
    Claude searches the web for award rates, deals and fares, using your Claude subscription.
 4. The runner then checks the report, posts it to your channel, and saves history in `state/`.
 5. **`reminders.py`** posts expiry reminders straight to Telegram. It doesn't use Claude.
+6. **`news_watch.py`** checks the miles blogs every 30 minutes and posts new relevant deals. It
+   doesn't use Claude either.
+7. If a job fails, **`repair.py`** asks `claude -p` to fix it, and **`healthcheck.py`** restarts
+   the container if the scheduler gets stuck.
 
 The code comes from GitHub, where the tests run on every push. Your balances, history and tokens
 stay in the folder on the NAS.
@@ -103,7 +111,8 @@ Download this repository (Code → Download ZIP, or `git clone`), then in the `M
      ```sh
      sudo docker compose up -d --build
      ```
-4. Check the container log shows `scheduler started`.
+4. Check the container log shows `scheduler started`. After about two minutes, `sudo docker ps`
+   should show the container as `(healthy)`.
 5. Send a test report now:
    ```sh
    sudo docker exec miles-chase python3 run_miles.py daily --full
@@ -224,6 +233,46 @@ routes. Claude also can't see award seat availability; always search Saver seats
 before transferring points. For reliable fares, put results from a flight price API in
 `data/fare_data.txt`, and Claude will use those instead of searching.
 
+## New-deal alerts
+
+Every 30 minutes the app reads the news feeds of [The MileLion](https://milelion.com) and
+[Mainly Miles](https://mainlymiles.com). This doesn't use Claude. When there's a new post that
+mentions KrisFlyer, Singapore Airlines, Scoot, Saver awards, Spontaneous Escapes, a transfer bonus,
+your cards or a city on your watchlist, you get one message:
+
+```
+🆕 New from the miles blogs
+
+KrisFlyer Spontaneous Escapes: November 2026
+The MileLion · https://milelion.com/...
+```
+
+- Each post is sent once. The very first check only notes what's already there, so you don't get
+  old posts.
+- If a blog is down, it's skipped and tried again next time.
+- Change how often it checks with `NEWS_EVERY_MINUTES`, or turn it off with `NEWS_ALERTS=off`.
+- To test it: `sudo docker exec miles-chase python3 run_miles.py news --no-send` prints what's new
+  without sending or remembering it.
+
+Combined with `DAILY_QUIET=silent`, you only hear from the app when there's something new.
+
+## Staying healthy
+
+The container is set up to keep running without you:
+
+| Problem | What happens |
+| --- | --- |
+| A temporary error: no internet, a timeout, Claude busy | Retried up to 3 times, 15 minutes apart. You're told only if all tries fail. |
+| Broken data, such as a typo in `data/my_points.txt` or a damaged history file | Claude (`claude -p`) looks at the error and fixes what it safely can, then the job is re-run. You get a message saying what was wrong, what it changed and whether the re-run worked. |
+| Something only you can fix, such as a missing balance or an expired Claude token | Claude changes nothing and tells you what to do, for example "Send /points CPM <your balance>". |
+| The app gets stuck | The Docker healthcheck notices within about 12 minutes and restarts the container. |
+| The app crashes, or the NAS reboots | Docker starts it again automatically. |
+| An unexpected error in the scheduler | It's logged, you get one message about it an hour at most, and the app carries on. |
+
+**What the self-repair may change:** Claude can read the whole project, but it's only allowed to
+edit files in `data/` and `state/`. It can't change the code, the prompts or `.env`, and it's told
+never to invent balances. It runs at most once per job per day. Turn it off with `SELF_REPAIR=off`.
+
 ## Privacy and security
 
 - **Keep the Telegram channel private.** Reports show your balances and goals.
@@ -261,6 +310,9 @@ All settings go in `.env`:
 | `ANTHROPIC_API_KEY` | Pay-per-use alternative to the token. Set only one. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Where reports are posted and commands are read |
 | `SPLIT_MESSAGES` | `sections` (default) posts each report section as its own message, with only the first one making a sound. `off` posts one long message. |
+| `NEWS_ALERTS` | `on` (default) or `off`: new-deal alerts from the miles blogs |
+| `NEWS_EVERY_MINUTES` | How often to check the blogs, default `30` (minimum 5) |
+| `SELF_REPAIR` | `on` (default) or `off`: let Claude fix broken data after a failed job |
 | `DAILY_QUIET` | Quiet days: `line` (default) posts one short line, `silent` posts nothing, `off` always posts the full report |
 | `CLAUDE_MODEL` | Optional model override for `claude -p` |
 | `CLAUDE_BIN` | Path to `claude`, only needed under cron. Don't set it for Docker. |
@@ -330,6 +382,7 @@ doesn't also run, and fail, every morning.
 
 | Problem | Fix |
 | --- | --- |
+| The container keeps restarting | Check `sudo docker logs --tail 50 miles-chase` for the error, and `sudo docker ps` for its health |
 | `still has a placeholder` | Replace every `[...]` in `data/my_points.txt` or `data/watchlist.txt` |
 | Telegram `chat not found` | Check `TELEGRAM_CHAT_ID`, including the `-100` at the start |
 | The bot ignores commands | Make the bot an admin of the channel, and post in that channel |
@@ -355,6 +408,9 @@ sudo docker logs --tail 50 miles-chase
 | `scheduler.py` | Runs the jobs on schedule and answers Telegram commands (the container's main process) |
 | `telegram_bot.py` | The Telegram commands |
 | `reminders.py` | Expiry reminders |
+| `news_watch.py` | New-deal alerts from the miles blogs' feeds |
+| `repair.py` | Self-repair with `claude -p` after a failed job |
+| `healthcheck.py` | Docker healthcheck: restarts the container if the scheduler gets stuck |
 | `state/` | History written by the runner: monthly balances, daily prices, sent reminders |
 | `Dockerfile`, `docker-compose.yml` | The NAS container |
 | `docs/architecture.drawio.svg` | The architecture diagram. It opens in draw.io for editing. |

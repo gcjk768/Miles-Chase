@@ -77,7 +77,10 @@ def message(card, points, expires, days):
 
 
 def load_sent():
-    return set(json.loads(SENT.read_text())) if SENT.exists() else set()
+    try:
+        return set(json.loads(SENT.read_text())) if SENT.exists() else set()
+    except (ValueError, OSError, TypeError):
+        return set()  # unreadable file: start again rather than stop reminders
 
 
 def run(today, send):

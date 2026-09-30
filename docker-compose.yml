@@ -3,8 +3,17 @@ services:
     build: .
     container_name: miles-chase
     restart: unless-stopped
+    # A small init process as PID 1: it forwards stop signals and cleans up finished jobs,
+    # and exits when the scheduler does, so the restart policy starts a fresh container.
+    init: true
     volumes:
       - .:/app
+    healthcheck:
+      # If the scheduler stops updating its heartbeat, stop it so Docker restarts the container.
+      test: ["CMD", "python3", "healthcheck.py", "--restart"]
+      interval: 2m
+      timeout: 30s
+      start_period: 2m
     logging:
       driver: json-file
       options:
