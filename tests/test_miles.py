@@ -5,6 +5,7 @@ No network, Claude or Telegram needed: file paths point at a temporary folder.
 """
 
 import io
+import os
 import shutil
 import sys
 import tempfile
@@ -461,6 +462,30 @@ class JobFailures(TempFiles):
         self.assertEqual(code, -1)
         self.assertIn("timed out", output)
         self.assertTrue(scheduler.HEARTBEAT.exists())
+
+    def test_typing_shown_while_claude_jobs_run(self):
+        calls = []
+        original = run_miles.telegram_api
+
+        def fake_api(token, method, payload, timeout=30):
+            calls.append((method, payload))
+            raise RuntimeError("Telegram down")  # must not break the job
+
+        run_miles.telegram_api = fake_api
+        os.environ.update(TELEGRAM_BOT_TOKEN="t", TELEGRAM_CHAT_ID="-100/7")
+        try:
+            quick = [sys.executable, "-c", "import time; time.sleep(1)"]
+            self.assertEqual(scheduler.execute(quick, typing=True)[0], 0)
+            self.assertEqual(calls, [("sendChatAction",
+                                      {"chat_id": "-100", "action": "typing", "message_thread_id": 7})])
+            calls.clear()
+            scheduler.execute(quick)
+            self.assertEqual(calls, [])
+        finally:
+            run_miles.telegram_api = original
+            del os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"]
+        self.assertIn("tickets", scheduler.CLAUDE_MODES)
+        self.assertNotIn("news", scheduler.CLAUDE_MODES)
 
 
 class NewsAlerts(TempFiles):

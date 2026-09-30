@@ -5,6 +5,7 @@ updated: 2026-09-30
 # Changelog
 
 ## 2026-09-30
+- feat: "typing…" shown in the topic while Claude jobs run (`CLAUDE_MODES` in [scheduler.py](../../scheduler.py), re-sent every 5 s from the heartbeat loop).
 - feat: `tickets` job / `/tickets` command: fixed, spaced layout (Business then Economy, one destination per block, one message per section), counts only transferable miles, verified SG booking link ([run_miles.py](../../run_miles.py) `TICKETS_PROMPT`).
 - feat: new miles videos from YouTube channel feeds (MileLion, Suitesmile, Lets Get To The Points; HoneyMoneySG and Kelvin filtered to miles topics) posted as "🎥 New miles videos" ([news_watch.py](../../news_watch.py)).
 - feat: after a `/points` update, Claude posts the Business and Economy Saver tickets the new total can book, plus the singaporeair.com booking link (one run per batch of updates, via the `ask` job).

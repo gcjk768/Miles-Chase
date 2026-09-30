@@ -567,6 +567,14 @@ def split_chat_id(chat_id):
     return chat, int(topic) if topic else None
 
 
+def send_typing(token, chat_id):
+    chat, topic = split_chat_id(chat_id)
+    payload = {"chat_id": chat, "action": "typing"}
+    if topic:
+        payload["message_thread_id"] = topic
+    telegram_api(token, "sendChatAction", payload, timeout=5)  # short: runs in the heartbeat loop
+
+
 def send_telegram(text, token, chat_id, silent=False):
     chat, topic = split_chat_id(chat_id)
     for i, piece in enumerate(chunks(text)):

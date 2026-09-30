@@ -42,6 +42,7 @@ TELEGRAM_WAIT_SECONDS = 20
 JOB_TIMEOUT_SECONDS = 45 * 60
 RETRY_AFTER_SECONDS = 15 * 60
 MAX_RETRIES = 3
+CLAUDE_MODES = ("daily", "monthly", "ask", "tickets")
 ERROR_REPORT_EVERY_SECONDS = 60 * 60  # at most one message an hour about the same problem
 
 TRANSIENT = re.compile(
@@ -134,7 +135,18 @@ def report_once_an_hour(problem, text):
         telegram(text)
 
 
-def execute(args, timeout=JOB_TIMEOUT_SECONDS):
+def show_typing():
+    """Telegram's "typing…" lasts about 5 seconds, so this is repeated while Claude works."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if token and chat_id:
+        try:
+            run_miles.send_typing(token, chat_id)
+        except (RuntimeError, OSError):
+            pass  # cosmetic; never let it break the job
+
+
+def execute(args, timeout=JOB_TIMEOUT_SECONDS, typing=False):
     """Run a command, keeping the heartbeat going. Returns (exit code, output); -1 on timeout."""
     with tempfile.TemporaryFile("w+") as out:
         process = subprocess.Popen(args, stdout=out, stderr=subprocess.STDOUT, text=True,
@@ -142,6 +154,8 @@ def execute(args, timeout=JOB_TIMEOUT_SECONDS):
         started = time.time()
         while process.poll() is None:
             beat()
+            if typing:
+                show_typing()
             if time.time() - started > timeout:
                 process.kill()
                 process.wait()
@@ -153,7 +167,9 @@ def execute(args, timeout=JOB_TIMEOUT_SECONDS):
 
 
 def run_job(mode, *options):
-    return execute([sys.executable, str(run_miles.ROOT / "run_miles.py"), mode, *options])
+    # Claude jobs take a minute or more, so show "typing…" in the chat meanwhile.
+    return execute([sys.executable, str(run_miles.ROOT / "run_miles.py"), mode, *options],
+                   typing=mode in CLAUDE_MODES)
 
 
 def run(mode, *options, attempt=1):
