@@ -45,7 +45,8 @@ LENGTH_TARGETS = {"daily": 2000, "monthly": 4000}  # the limits the prompts ask 
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
-PRICES_LINE = re.compile(r"^PRICES (\d{4}-\d{2}-\d{2})\b.*$")
+# Claude sometimes copies the brackets from the prompt's format example: PRICES [2026-09-30] | ...
+PRICES_LINE = re.compile(r"^PRICES \[?(\d{4}-\d{2}-\d{2})\]?(?=\s|$).*$")
 
 # Bank points to KrisFlyer miles: (points per transfer block, miles per block, minimum points).
 # Only whole blocks count towards MY MILES, since that's what can actually be transferred.
@@ -263,6 +264,7 @@ def save_prices(prices, today):
         print("warning: no PRICES line in the output, so tomorrow has nothing to compare to",
               file=sys.stderr)
         return
+    prices = re.sub(r"^PRICES \[(\d{4}-\d{2}-\d{2})\]", r"PRICES \1", prices)
     date = PRICES_LINE.match(prices).group(1)
     if date != today.isoformat():
         print(f"warning: PRICES line is dated {date}, expected {today}; saving it under today",
