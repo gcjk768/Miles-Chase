@@ -77,6 +77,8 @@ URL = re.compile(r"https?://\S+")
 STATUS_LINE = re.compile(r"^\s*STATUS:\s*(NEWS|QUIET)\s*$", re.IGNORECASE)
 QUIET_MODES = ("line", "silent", "off")
 SPLIT_MODES = ("sections", "off")
+SHORT_SECTION = 200  # sections up to this long share a message with neighbouring short ones
+GROUP_LIMIT = 900    # longest message made by grouping short sections
 USER_TEXT_LIMIT = 80  # longest route or goal accepted from Telegram
 
 
@@ -455,24 +457,34 @@ def telegram_api(token, method, payload, timeout=30):
 
 
 def sections(report):
-    """Split a report into its sections: blocks separated by blank lines.
+    """Split a report into messages, one per section (blocks separated by blank lines).
 
-    A block that is a single line, such as a report title, is joined to the block after it
-    so it doesn't become a message on its own.
+    A single-line block, such as a report title, is joined to the block after it. Consecutive
+    short sections (up to SHORT_SECTION characters) share one message, up to GROUP_LIMIT, so a
+    run of small sections like deals, tip and sources doesn't become a message each.
     """
     blocks = [b.strip() for b in re.split(r"\n\s*\n", report.strip()) if b.strip()]
-    merged, carry = [], None
-    for block in blocks:
+    joined, carry = [], None
+    for i, block in enumerate(blocks):
         if carry:
             block = f"{carry}\n\n{block}"
             carry = None
-        if "\n" not in block and block is not blocks[-1]:
+        if "\n" not in block and i < len(blocks) - 1:
             carry = block
             continue
-        merged.append(block)
+        joined.append(block)
     if carry:
-        merged.append(carry)
-    return merged
+        joined.append(carry)
+
+    messages, last_is_group = [], False
+    for block in joined:
+        short = len(block) <= SHORT_SECTION
+        if short and last_is_group and len(messages[-1]) + 2 + len(block) <= GROUP_LIMIT:
+            messages[-1] += "\n\n" + block
+            continue
+        messages.append(block)
+        last_is_group = short
+    return messages
 
 
 def send_telegram(text, token, chat_id, silent=False):

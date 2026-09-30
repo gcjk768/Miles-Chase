@@ -128,7 +128,7 @@ Post these in your channel. Messages from any other chat are ignored.
 
 | Command | What it does |
 | --- | --- |
-| `/points` | Your balances, the miles they're worth and the fees to transfer them |
+| `/points` | Miles and transfer fee per card, totals, expiry dates and your goal |
 | `/points CR 52000` | Set a balance: `CR`, `CPM`, `SCR` or `KF`. The expiry is kept. |
 | `/points SCR 31000 exp 2027-06` | Set a balance and its expiry month |
 | `/watch` | List your watchlist routes, numbered |
@@ -200,7 +200,8 @@ For each report, `run_miles.py`:
 4. If a report is over its length limit (2,000 characters daily, 3,500 monthly), asks Claude once
    more, without web search, to shorten it while keeping every number.
 5. Posts it to Telegram and saves history in `state/`. Each section (the alerts, each route, each
-   monthly section) goes out as its own message, and only the first one makes a sound. Set
+   monthly section) goes out as its own message, and only the first one makes a sound. Short
+   sections next to each other, such as deals, tip and sources, share one message. Set
    `SPLIT_MESSAGES=off` to get one long message instead.
 
 **Quiet days.** The daily report starts with a `STATUS: NEWS` or `STATUS: QUIET` line, which is

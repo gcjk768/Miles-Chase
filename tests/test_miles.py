@@ -106,17 +106,38 @@ class ReportCleaning(unittest.TestCase):
         self.assertEqual(run_miles.split_status("body"), ("body", None))
 
     def test_sections_split_on_blank_lines_and_keep_title_with_next(self):
-        report = "✈️ TITLE\n\n🚨 Alerts\nsale\n\n\n🗼 Tokyo\nY 800\nJ NA\n\n🔗 SOURCES"
-        self.assertEqual(run_miles.sections(report),
-                         ["✈️ TITLE\n\n🚨 Alerts\nsale", "🗼 Tokyo\nY 800\nJ NA", "🔗 SOURCES"])
+        long_text = "x" * 250
+        report = (f"✈️ TITLE\n\n🚨 Alerts\n{long_text}\n\n\n🗼 Tokyo\n{long_text}\n\n"
+                  f"🦘 Sydney\n{long_text}")
+        self.assertEqual(run_miles.sections(report), [
+            f"✈️ TITLE\n\n🚨 Alerts\n{long_text}", f"🗼 Tokyo\n{long_text}", f"🦘 Sydney\n{long_text}"])
         self.assertEqual(run_miles.sections("one line"), ["one line"])
+
+    def test_short_sections_share_a_message(self):
+        long_text = "x" * 250
+        report = (f"💰 BALANCES\n{long_text}\n\n🤝 BACKUP\nshort\n\n📅 TIMING\nshort\n\n"
+                  f"💳 CARDS\n{long_text}\n\n🎁 DEALS\nnone\n\n💡 TIP\ntip\n\n🔗 SOURCES\na.com")
+        self.assertEqual(run_miles.sections(report), [
+            f"💰 BALANCES\n{long_text}",
+            "🤝 BACKUP\nshort\n\n📅 TIMING\nshort",
+            f"💳 CARDS\n{long_text}",
+            "🎁 DEALS\nnone\n\n💡 TIP\ntip\n\n🔗 SOURCES\na.com",
+        ])
+
+    def test_grouping_stops_at_the_limit(self):
+        block = "🎁 S\n" + "y" * 190
+        messages = run_miles.sections("\n\n".join([block] * 6))
+        self.assertTrue(all(len(m) <= run_miles.GROUP_LIMIT for m in messages))
+        self.assertEqual(sum(m.count("🎁") for m in messages), 6)
 
     def test_send_report_only_first_message_notifies(self):
         sent = []
         original = run_miles.telegram_api
         run_miles.telegram_api = lambda token, method, payload, timeout=30: sent.append(payload)
         try:
-            count = run_miles.send_report("A\nx\n\nB\ny\n\nC\nz", "t", "c", split=True)
+            long_text = "x" * 250
+            report = f"A\n{long_text}\n\nB\n{long_text}\n\nC\n{long_text}"
+            count = run_miles.send_report(report, "t", "c", split=True)
             self.assertEqual(count, 3)
             self.assertEqual([p["disable_notification"] for p in sent], [False, True, True])
             sent.clear()
@@ -179,7 +200,10 @@ class TelegramCommands(TempFiles):
     def test_points(self):
         self.assertIn("Total: 65,200 miles", self.handle("/points"))
         self.assertIn("Total: 68,400 miles", self.handle("/points CR 60,000"))
-        self.assertIn("SCR: 31000 exp 2027-07", self.handle("/points SCR 31000 exp 2027-07"))
+        reply = self.handle("/points SCR 31000 exp 2027-07")
+        self.assertIn("SCR end Jul 2027", reply)
+        self.assertIn("SCR: 31000 exp 2027-07", run_miles.MY_POINTS.read_text())
+        self.assertEqual(reply.count("31,000"), 1)  # balances aren't listed twice
         self.assertTrue(self.handle("/points CR abc").startswith("Use /points"))
         self.assertIn("unknown card", self.handle("/points XX 5"))
 

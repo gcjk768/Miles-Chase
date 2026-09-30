@@ -17,6 +17,7 @@ Only messages in TELEGRAM_CHAT_ID (your private channel or chat with the bot) ar
 
 import re
 
+import reminders
 import run_miles
 
 OFFSET = run_miles.STATE / "telegram_offset.txt"
@@ -139,6 +140,13 @@ def goal_command(args):
 
 
 def balances_summary():
+    """Miles and fees per card, expiry dates and the goal, each shown once."""
     lines = run_miles.read_lines(run_miles.MY_POINTS)
-    summary = run_miles.miles_summary(run_miles.parse_balances(lines))
-    return "\n".join(lines + ["", "If you convert everything:"] + summary)
+    reply = ["If you convert everything:"] + run_miles.miles_summary(run_miles.parse_balances(lines))
+    expiring = [f"{card} end {expires:%b %Y}" for card, _, expires in reminders.expiries(lines)]
+    if expiring:
+        reply += ["", "Expiry: " + ", ".join(expiring)]
+    goal = run_miles.get_goal()
+    if goal:
+        reply += ["", f"Goal: {goal}"]
+    return "\n".join(reply)
