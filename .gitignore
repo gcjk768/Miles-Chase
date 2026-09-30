@@ -4,3 +4,4 @@ __pycache__/
 miles.log
 state/scheduler.json
 state/telegram_offset.txt
+state/reminders_sent.json

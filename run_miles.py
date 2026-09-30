@@ -4,15 +4,19 @@
 Usage:
     python run_miles.py daily      # daily fare tracker
     python run_miles.py monthly    # monthly miles coach report
+    python run_miles.py reminders  # expiry reminders, no Claude needed
 
 Options:
     --dry-run   print the assembled prompt and stop (no Claude call, nothing saved)
     --no-send   run Claude and save state, but print instead of posting to Telegram
+    --full      daily only: post the full report even on a quiet day
 
 Environment (or a .env file next to this script, see .env.example):
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   where to post (if unset, the report is printed)
     CLAUDE_MODEL                           optional model override for `claude -p`
     CLAUDE_BIN                             path to `claude` if it isn't on PATH (e.g. under cron)
+    DAILY_QUIET                            quiet days: "line" (default) posts one short line,
+                                           "silent" posts nothing, "off" posts the full report
 """
 
 import argparse
@@ -65,6 +69,11 @@ BALANCE_LINE = re.compile(r"^\s*([A-Za-z]+)\s*:\s*([\d,]+)")
 # Card numbers (groups of 4) and long digit runs such as KrisFlyer or account numbers.
 ACCOUNT_NUMBER = re.compile(r"\b(?:\d{4}[ -]){3}\d{1,7}\b|\b\d{10,19}\b")
 URL = re.compile(r"https?://\S+")
+
+# The daily prompt starts its output with this, so quiet days can be posted as one line.
+STATUS_LINE = re.compile(r"^\s*STATUS:\s*(NEWS|QUIET)\s*$", re.IGNORECASE)
+QUIET_MODES = ("line", "silent", "off")
+USER_TEXT_LIMIT = 80  # longest route or goal accepted from Telegram
 
 
 def load_env_file(path=ROOT / ".env"):
@@ -163,6 +172,74 @@ def set_balance(card, points, expiry=None):
     else:
         lines.append(f"{card}: {points}" + (f" exp {expiry}" if expiry else ""))
     write_lines(MY_POINTS, lines)
+
+
+def check_user_text(text, what):
+    """Validate a route or goal typed in Telegram before it goes into a data file."""
+    if not text:
+        raise ValueError(f"Give a {what}.")
+    if len(text) > USER_TEXT_LIMIT:
+        raise ValueError(f"Keep the {what} under {USER_TEXT_LIMIT} characters.")
+    if "[" in text or "]" in text or text.lstrip().startswith("#"):
+        raise ValueError(f"The {what} can't contain [ ] or start with #.")
+
+
+def watchlist_routes():
+    return [l for l in read_lines(WATCHLIST) if not l.upper().startswith("MY MILES:")]
+
+
+def add_route(route):
+    check_user_text(route, "route")
+    if route.upper().startswith("MY MILES:"):
+        raise ValueError("Routes can't start with MY MILES.")
+    if route.lower() in (r.lower() for r in watchlist_routes()):
+        raise ValueError(f"{route} is already on the watchlist.")
+    lines = WATCHLIST.read_text(encoding="utf-8").splitlines() if WATCHLIST.exists() else []
+    write_lines(WATCHLIST, lines + [route])
+
+
+def remove_route(number):
+    """Remove the route shown as `number` (1-based) in watchlist_routes(); returns it."""
+    routes = watchlist_routes()
+    if not 1 <= number <= len(routes):
+        raise ValueError(f"Pick a number from 1 to {len(routes)}.")
+    if len(routes) == 1:
+        raise ValueError("That's the only route. Add another before removing it.")
+    target, seen, kept = routes[number - 1], 0, []
+    for line in WATCHLIST.read_text(encoding="utf-8").splitlines():
+        if line.rstrip() == target:
+            seen += 1
+            if seen == 1:
+                continue
+        kept.append(line)
+    write_lines(WATCHLIST, kept)
+    return target
+
+
+def get_goal():
+    for line in read_lines(MY_POINTS):
+        if re.match(r"^\s*goal\s*:", line, re.IGNORECASE):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def set_goal(goal):
+    """Set the Goal line in data/my_points.txt, or remove it when goal is None."""
+    if goal is not None:
+        check_user_text(goal, "goal")
+    lines = MY_POINTS.read_text(encoding="utf-8").splitlines() if MY_POINTS.exists() else []
+    lines = [l for l in lines if not re.match(r"^\s*goal\s*:", l, re.IGNORECASE)]
+    if goal is not None:
+        lines.append(f"Goal: {goal}")
+    write_lines(MY_POINTS, lines)
+
+
+def split_status(report):
+    """Return (report without its STATUS line, "NEWS"/"QUIET", or None if there was none)."""
+    lines = report.strip().splitlines()
+    if lines and (match := STATUS_LINE.match(lines[0])):
+        return "\n".join(lines[1:]).strip(), match.group(1).upper()
+    return report, None
 
 
 def clean_report(report, mode):
@@ -385,13 +462,34 @@ def send_telegram(text, token, chat_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", choices=sorted(PROMPTS))
+    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders"]))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-send", action="store_true")
+    parser.add_argument("--full", action="store_true")
     args = parser.parse_args()
     load_env_file()
 
     today = datetime.now(SGT).date()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    posting = not (args.no_send or args.dry_run) and token and chat_id
+    quiet = os.environ.get("DAILY_QUIET", "line").strip().lower()
+    if quiet not in QUIET_MODES:
+        fail(f"DAILY_QUIET must be one of {', '.join(QUIET_MODES)}, not {quiet!r}")
+
+    if args.mode == "reminders":
+        import reminders
+        if not posting:  # print only, and don't mark anything as sent
+            for _, text in reminders.due(today, read_lines(MY_POINTS), reminders.load_sent()):
+                print(text + "\n")
+            return
+        try:
+            count = reminders.run(today, lambda text: send_telegram(text, token, chat_id))
+        except (RuntimeError, OSError) as error:
+            fail(str(error))
+        print(f"Sent {count} expiry reminder(s).")
+        return
+
     if args.mode == "monthly":
         prompt, points = build_monthly(today)
     else:
@@ -402,17 +500,24 @@ def main():
         return
 
     report = clean_report(run_claude(prompt), args.mode)
+    report, status = split_status(report)
 
     if args.mode == "daily":
         report, prices = split_prices_line(report)
         save_prices(prices, today)
     else:
         save_monthly_history(points, today)
-    report = shorten(report, args.mode)
 
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    if args.no_send or not (token and chat_id):
+    if args.mode == "daily" and status == "QUIET" and quiet != "off" and not args.full:
+        if quiet == "silent":
+            print("Quiet day: nothing posted.")
+            return
+        report = (f"✈️ {today:%d %b}: no fare changes or deals on your watchlist today. "
+                  "Send /run daily for the full report.")
+    else:
+        report = shorten(report, args.mode)
+
+    if not posting:
         print(report)
         return
     try:

@@ -3,7 +3,10 @@
 Posts two KrisFlyer reports to a Telegram channel, written by Claude:
 
 - **Daily** (07:53 SGT): SIA cash fares for your watchlist vs Saver awards, with a verdict per route.
+  On quiet days (no fare changes or deals) it posts one short line instead; see `DAILY_QUIET`.
 - **Monthly** (1st of the month, 08:07 SGT): balances, expiry watch, what you can book, deals and tips.
+- **Expiry reminders** (09:00 SGT, NAS): a message 60, 30 and 7 days before any points or miles expire.
+  No Claude needed.
 
 A GitHub Actions workflow runs `run_miles.py` on schedule. The script fills today's date, your balances,
 last month's history and yesterday's prices into `miles_monthly.txt` / `miles_daily.txt`, runs
@@ -64,6 +67,7 @@ PATH, so set `CLAUDE_BIN` in `.env` to the output of `which claude`, and use ful
 ```cron
 53 7 * * * cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py daily >> miles.log 2>&1
 7 8 1 * *  cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py monthly >> miles.log 2>&1
+0 9 * * *  cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py reminders >> miles.log 2>&1
 ```
 
 Those times assume the machine's clock is on Singapore time. Moving from computer to NAS: copy the
@@ -107,7 +111,13 @@ Messages from any other chat are ignored.
 | `/points` | Show your balances, the miles they're worth before transfer and the fees to transfer them |
 | `/points CR 52000` | Set a balance (`CR`, `CPM`, `SCR` or `KF`); the expiry is kept |
 | `/points SCR 31000 exp 2027-06` | Set a balance and its expiry |
-| `/run daily`, `/run monthly` | Run a report now |
+| `/watch` | List the watchlist routes, numbered |
+| `/watch add SIN Bali, Jun 2027` | Add a route |
+| `/watch remove 2` | Remove route number 2 |
+| `/goal` | Show your goal |
+| `/goal Tokyo business, 2 pax, Mar 2027` | Set your goal (used by the monthly report) |
+| `/goal clear` | Remove your goal |
+| `/run daily`, `/run monthly` | Run a report now (the daily one always posts in full) |
 | `/help` | List the commands |
 
 ## Safety checks before posting
@@ -116,3 +126,21 @@ Before anything is posted, the runner hides card-like and long account-like numb
 outside links and removes markdown the prompt forbids. If a report is over the prompt's limit
 (2,000 characters daily, 3,500 monthly), Claude is asked once more, without web search, to shorten it
 while keeping every number. If it's still too long for one Telegram message, it's posted in parts.
+
+## Quiet days and expiry reminders
+
+The daily report starts with a `STATUS: NEWS` or `STATUS: QUIET` line that the runner removes. On a
+quiet day (no alert, no fare change) it follows `DAILY_QUIET` in `.env`: `line` (default) posts one
+short line, `silent` posts nothing, `off` always posts the full report. `/run daily` always posts in full.
+
+Expiry reminders read the `exp YYYY-MM` dates in `data/my_points.txt`, count each as the end of that
+month, and send one message at 60, 30 and 7 days before. Each goes out once
+(`state/reminders_sent.json`). Preview with `python3 run_miles.py reminders --dry-run`.
+
+## Tests
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+They need no network, Claude or Telegram, and run on GitHub on every push.

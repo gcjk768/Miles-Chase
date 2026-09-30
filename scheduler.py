@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run the miles reports on schedule, for a NAS or any always-on machine.
 
-Runs `run_miles.py daily` at 07:53 and `run_miles.py monthly` at 08:07 on the 1st,
-Singapore time. If the machine was off at that time, the report runs as soon as it's
+Runs `run_miles.py daily` at 07:53, `run_miles.py monthly` at 08:07 on the 1st and
+`run_miles.py reminders` (expiry reminders, no Claude) at 09:00, Singapore time. If the machine was off at that time, the report runs as soon as it's
 back, as long as it's still the same day. Failures are posted to Telegram.
 Between reports it answers Telegram commands such as /points (see telegram_bot.py).
 """
@@ -18,6 +18,7 @@ import telegram_bot
 
 DAILY_AT = clock(7, 53)
 MONTHLY_AT = clock(8, 7)
+REMINDERS_AT = clock(9, 0)
 LAST_RUN = run_miles.STATE / "scheduler.json"
 CHECK_EVERY_SECONDS = 30
 TELEGRAM_WAIT_SECONDS = 20
@@ -32,6 +33,8 @@ def due_jobs(now, last_run):
     month = now.strftime("%Y-%m")
     if now.day == 1 and now.time() >= MONTHLY_AT and last_run.get("monthly") != month:
         jobs.append(("monthly", month))
+    if now.time() >= REMINDERS_AT and last_run.get("reminders") != today:
+        jobs.append(("reminders", today))
     return jobs
 
 
@@ -53,10 +56,10 @@ def log(message):
     print(f"{datetime.now(run_miles.SGT):%Y-%m-%d %H:%M:%S} {message}", flush=True)
 
 
-def run(mode):
+def run(mode, *options):
     log(f"starting {mode} report")
     result = subprocess.run(
-        [sys.executable, str(run_miles.ROOT / "run_miles.py"), mode],
+        [sys.executable, str(run_miles.ROOT / "run_miles.py"), mode, *options],
         capture_output=True, text=True,
     )
     output = (result.stdout + result.stderr).strip()

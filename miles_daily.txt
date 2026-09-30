@@ -25,13 +25,16 @@ FOR EACH WATCHLIST ROUTE
 THEN ADD
 Alerts: any route where a fare dropped 10% or more vs YESTERDAY, and any SIA fare sale or KrisFlyer Spontaneous Escapes deal covering a watchlist route, with its dates. If nothing, write "No alerts today."
 
+STATUS
+The very first line must be exactly "STATUS: NEWS" or "STATUS: QUIET". Use NEWS if there is any alert, if any cash fare changed vs YESTERDAY, or if a fare was found and YESTERDAY is empty. Otherwise use QUIET. The script removes this line before posting.
+
 FORMAT
 Plain text for Telegram. No markdown tables, no asterisks, no # headings. One short block per route with emoji markers. Money in S$ with commas. Keep it under 2,000 characters. Say each result once, as a final statement. Never show your working or question yourself in the text. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
 The very last line must be today's prices in this exact format, for the script to save:
 PRICES [YYYY-MM-DD] | [route] Y [price or NA] J [price or NA] | [route] Y [price or NA] J [price or NA]
 
 SELF CHECK BEFORE PRINTING
-Recheck every price difference, percentage and cents per mile figure. Confirm every fare has a source or says "not found". Confirm the output is under 2,000 characters, the PRICES line is last and correctly formatted, and no dashes are used as connectors. Fix any issue, then print.
+Recheck every price difference, percentage and cents per mile figure. Confirm every fare has a source or says "not found". Confirm the STATUS line is first, the output is under 2,000 characters, the PRICES line is last and correctly formatted, and no dashes are used as connectors. Fix any issue, then print.
 
 ==============================
 TODAY: [YYYY-MM-DD]

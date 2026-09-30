@@ -5,7 +5,13 @@ Only messages in TELEGRAM_CHAT_ID (your private channel or chat with the bot) ar
     /points                        show balances and the miles they add up to
     /points CR 52000               set a balance (CR, CPM, SCR or KF)
     /points SCR 31000 exp 2027-06  set a balance and its expiry
-    /run daily   /run monthly      run a report now
+    /watch                         list the watchlist routes
+    /watch add SIN Bali, Jun 2027  add a route
+    /watch remove 2                remove route number 2
+    /goal                          show the goal
+    /goal Tokyo business, 2 pax, Mar 2027   set the goal
+    /goal clear                    remove the goal
+    /run daily   /run monthly      run a report now (daily always posts in full)
     /help                          list the commands
 """
 
@@ -19,6 +25,12 @@ HELP = (
     "/points: show balances\n"
     "/points CR 52000: set a balance (CR, CPM, SCR or KF)\n"
     "/points SCR 31000 exp 2027-06: set a balance and expiry\n"
+    "/watch: list routes\n"
+    "/watch add SIN Bali, Jun 2027: add a route\n"
+    "/watch remove 2: remove route 2\n"
+    "/goal: show the goal\n"
+    "/goal Tokyo business, 2 pax, Mar 2027: set the goal\n"
+    "/goal clear: remove the goal\n"
     "/run daily or /run monthly: run a report now"
 )
 
@@ -51,9 +63,15 @@ def handle(text, run_report):
     command = words[0].split("@")[0].lower()  # /points@MyBot works too
     if command == "/points":
         return points_command(words[1:])
+    if command == "/watch":
+        return watch_command(words[1:])
+    if command == "/goal":
+        return goal_command(words[1:])
     if command == "/run":
         if len(words) == 2 and words[1].lower() in run_miles.PROMPTS:
-            run_report(words[1].lower())
+            mode = words[1].lower()
+            # Asked for by hand, so post the whole daily report even on a quiet day.
+            run_report(mode, "--full") if mode == "daily" else run_report(mode)
             return None
         return "Use /run daily or /run monthly"
     if command in ("/help", "/start"):
@@ -77,6 +95,47 @@ def points_command(args):
     except ValueError as error:
         return str(error)
     return f"Updated {args[0].upper()}.\n\n" + balances_summary()
+
+
+def watch_command(args):
+    usage = "Use /watch, /watch add SIN Bali, Jun 2027 or /watch remove 2"
+    try:
+        if not args:
+            pass
+        elif args[0].lower() == "add":
+            route = " ".join(args[1:])
+            run_miles.add_route(route)
+            return f"Added {route}.\n\n" + watchlist_summary()
+        elif args[0].lower() == "remove" and len(args) == 2 and args[1].isdigit():
+            removed = run_miles.remove_route(int(args[1]))
+            return f"Removed {removed}.\n\n" + watchlist_summary()
+        else:
+            return usage
+    except ValueError as error:
+        return str(error)
+    return watchlist_summary()
+
+
+def watchlist_summary():
+    routes = run_miles.watchlist_routes()
+    if not routes:
+        return "The watchlist is empty. Add a route with /watch add SIN Bali, Jun 2027"
+    return "Watchlist:\n" + "\n".join(f"{i}. {route}" for i, route in enumerate(routes, 1))
+
+
+def goal_command(args):
+    try:
+        if not args:
+            goal = run_miles.get_goal()
+            return f"Goal: {goal}" if goal else "No goal set. Use /goal Tokyo business, 2 pax, Mar 2027"
+        if len(args) == 1 and args[0].lower() == "clear":
+            run_miles.set_goal(None)
+            return "Goal removed."
+        goal = " ".join(args)
+        run_miles.set_goal(goal)
+        return f"Goal set: {goal}. The next monthly report will track it."
+    except ValueError as error:
+        return str(error)
 
 
 def balances_summary():
