@@ -21,6 +21,8 @@ same day. If a job fails, the error is posted to Telegram.
 - [Your data files](#your-data-files)
 - [How miles and fees are calculated](#how-miles-and-fees-are-calculated)
 - [How the reports work](#how-the-reports-work)
+- [Privacy and security](#privacy-and-security)
+- [After the first reports](#after-the-first-reports)
 - [Settings](#settings)
 - [Keeping it up to date](#keeping-it-up-to-date)
 - [Running on a computer](#running-on-a-computer)
@@ -72,7 +74,8 @@ Download this repository (Code → Download ZIP, or `git clone`), then in the `M
 
 1. Install **Docker** from the UGOS App Center.
 2. Copy the whole `Miles-Chase` folder, including `.env`, to a shared folder on the NAS
-   (for example `docker/Miles-Chase`) with the UGOS Files app or over SMB.
+   (for example `docker/Miles-Chase`) with the UGOS Files app or over SMB. In the UGOS shared
+   folder permissions, give only your own account access, since `.env` holds your tokens.
 3. Start the container, either:
    - **Docker app:** Project → Create, choose the `Miles-Chase` folder so it picks up
      `docker-compose.yml`, then deploy; or
@@ -87,6 +90,17 @@ Download this repository (Code → Download ZIP, or `git clone`), then in the `M
    ```
    Then send `/points` in your channel. The bot replies within a few seconds, or after a report
    finishes if one is running.
+
+### 5. Finish up
+
+- [ ] Test report arrived in your Telegram channel
+- [ ] `/points` shows the right balances, miles and fees
+- [ ] `python3 run_miles.py reminders --dry-run` (run inside the container with
+      `sudo docker exec miles-chase ...`) lists any reminders you expect
+- [ ] On GitHub, disable the **Miles reports** workflow (Actions → Miles reports → ··· →
+      Disable workflow) so it doesn't also run, and fail, every morning
+- [ ] Optional: in the repository settings, make `main` the default branch and delete any old
+      `claude/...` branches
 
 ## Telegram commands
 
@@ -186,6 +200,33 @@ Search Saver seats on singaporeair.com, then transfer in the Citi Mobile app. Al
 routes. Claude also can't see award seat availability; always search Saver seats on singaporeair.com
 before transferring points. For reliable fares, put results from a flight price API in
 `data/fare_data.txt`, and Claude will use those instead of searching.
+
+## Privacy and security
+
+- **Keep the Telegram channel private.** Reports show your balances and goals.
+- **Keep `.env` out of git and off public shares.** It holds your Claude and Telegram tokens.
+  `.gitignore` already excludes it. On the NAS, limit the shared folder to your own account.
+- **This repository is public.** Don't commit your filled-in `data/` files, `state/` or `.env`.
+  Keep your real data only on the NAS, or make the repository private first.
+- **Account numbers never reach Telegram.** Card numbers and any run of 10 or more digits are
+  hidden before posting, even if they end up in the output.
+- **Only your channel can control the bot.** Commands from any other chat are ignored.
+- **If a token leaks:** for Telegram, send `/revoke` to @BotFather and put the new token in `.env`.
+  For Claude, run `claude setup-token` again and update `.env`. Then restart the container.
+
+## After the first reports
+
+Give it a week or two, then check:
+
+- **Many "not found" fares?** Web search often can't see live SIA fares. The fix is a flight price
+  API: put its results in `data/fare_data.txt` (one line per route with the fare and date), and
+  Claude uses those instead of searching. This needs an account with a fare API provider.
+- **A section always empty or a number wrong?** Adjust the wording in `miles_monthly.txt` or
+  `miles_daily.txt`. The rules, baseline facts and report sections are all plain text.
+- **"Baseline changes" listed in a monthly report?** Update that figure in both prompt files. If
+  it's a transfer fee, also update `TRANSFER_FEES` in `run_miles.py`.
+- **Too many or too few daily messages?** Change `DAILY_QUIET` in `.env`.
+- **Something odd?** Check the container log with `sudo docker logs --tail 50 miles-chase`.
 
 ## Settings
 
