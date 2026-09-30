@@ -55,14 +55,16 @@ SGT = timezone(timedelta(hours=8))
 # Claude sometimes copies the brackets from the prompt's format example: PRICES [2026-09-30] | ...
 PRICES_LINE = re.compile(r"^PRICES \[?(\d{4}-\d{2}-\d{2})\]?(?=\s|$).*$")
 
-# Card points to KrisFlyer miles, counted before transfer at the straight rate:
-# (points, miles), so 52,000 Citi Rewards points count as 20,800 miles.
+# Card balances to KrisFlyer miles, counted before transfer at the straight rate:
+# (balance, miles), so 52,000 Citi Rewards points count as 20,800 miles.
 CONVERSIONS = {
-    "CR": (25000, 10000),   # Citi Rewards
-    "SCR": (25000, 10000),  # Standard Chartered Rewards
-    "CPM": (1, 1),          # Citi PremierMiles
+    "CR": (25000, 10000),   # Citi Rewards: ThankYou points
+    "SCR": (25000, 10000),  # Standard Chartered Rewards: 360° Rewards points
+    "CPM": (1, 1),          # Citi PremierMiles: already miles (Citi Miles), 1:1
     "KF": (1, 1),           # already in KrisFlyer
 }
+# What each card's balance is called.
+UNITS = {"CR": "points", "SCR": "points", "CPM": "Citi Miles", "KF": "KrisFlyer miles"}
 # Fee in S$ for moving a card's points to KrisFlyer in one transfer, from the prompts'
 # baseline facts. Update these when a report lists them under "Baseline changes".
 TRANSFER_FEES = {"CR": 27.25, "CPM": 27.25, "SCR": 27.00}
@@ -148,7 +150,7 @@ def miles_summary(balances):
         if card == "KF":
             lines.append(f"KF: {points:,} miles already in KrisFlyer")
             continue
-        line = f"{card}: {points:,} points = {card_miles(card, points):,} miles"
+        line = f"{card}: {points:,} {UNITS[card]} = {card_miles(card, points):,} KrisFlyer miles"
         fee = transfer_fee(card, points)
         if fee:
             line += f", transfer fee {'about ' if card in APPROX_FEES else ''}S${fee:,.2f}"

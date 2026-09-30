@@ -74,6 +74,9 @@ class MilesAndFees(unittest.TestCase):
         self.assertIn("Total: 65,200 miles", summary)
         self.assertIn("Transfer fees to pay: about S$81.50 (one transfer per card)", summary)
         self.assertIn("KF: 12,000 miles already in KrisFlyer", summary)
+        text = "\n".join(summary)
+        self.assertIn("CPM: 20,000 Citi Miles = 20,000 KrisFlyer miles", text)
+        self.assertIn("CR: 52,000 points = 20,800 KrisFlyer miles", text)
 
     def test_parse_balances_ignores_other_lines(self):
         lines = ["CR: 52,000 exp 2027-01", "Goal: Tokyo", "Family: Dad KF 30000", "XX: 5"]
@@ -272,7 +275,7 @@ class ExpiryReminders(TempFiles):
         self.assertEqual(due, [])
         due = reminders.due(date(2026, 12, 2), self.LINES, set())  # 60 days
         self.assertEqual([keys[0] for keys, _ in due], ["CR:2027-01-31:60", "KF:2027-01-31:60"])
-        self.assertIn("52,000 points (20,800 miles)", due[0][1])
+        self.assertIn("52,000 points (20,800 KrisFlyer miles)", due[0][1])
         self.assertIn("Transfer fee S$27.25", due[0][1])
         self.assertIn("12,000 miles expire", due[1][1])
 

@@ -1,7 +1,7 @@
 # Miles Chase
 
 A Telegram bot that tracks your KrisFlyer miles and Singapore Airlines award options. It collects
-points on Citi Rewards, Citi PremierMiles and Standard Chartered Rewards. Claude writes the reports
+points on Citi Rewards and Standard Chartered Rewards, and Citi Miles on Citi PremierMiles. Claude writes the reports
 with `claude -p` and web search. Everything runs in a Docker container on your NAS.
 
 | What | When (Singapore time) | Uses Claude |
@@ -150,7 +150,7 @@ the commands above; changes apply on the next run, with no restart needed.
 
 ```
 CR: 52000 exp 2027-01        Citi Rewards points and expiry month
-CPM: 20000                   Citi PremierMiles (they don't expire)
+CPM: 20000                   Citi PremierMiles: already miles (Citi Miles), they don't expire
 SCR: 31000 exp 2027-06       Standard Chartered Rewards points and expiry month
 KF: 12000 exp 2029-01        miles already in KrisFlyer
 Goal: Tokyo business, 2 pax, Mar 2027        optional
@@ -169,7 +169,7 @@ use the same figures:
 | Card | Rate | Transfer fee |
 | --- | --- | --- |
 | Citi Rewards (`CR`) | 25,000 points = 10,000 miles, so 52,000 points = 20,800 miles | S$27.25 |
-| Citi PremierMiles (`CPM`) | 1 point = 1 mile | S$27.25 |
+| Citi PremierMiles (`CPM`) | already miles: 1 Citi Mile = 1 KrisFlyer mile | S$27.25 |
 | SC Rewards (`SCR`) | 25,000 points = 10,000 miles | about S$27 |
 | KrisFlyer (`KF`) | already miles | none |
 
@@ -177,9 +177,9 @@ The fee is one per card, since each card's points are moved in one transfer. A c
 adds no fee. For example:
 
 ```
-CR: 52,000 points = 20,800 miles, transfer fee S$27.25
-CPM: 20,000 points = 20,000 miles, transfer fee S$27.25
-SCR: 31,000 points = 12,400 miles, transfer fee about S$27.00
+CR: 52,000 points = 20,800 KrisFlyer miles, transfer fee S$27.25
+CPM: 20,000 Citi Miles = 20,000 KrisFlyer miles, transfer fee S$27.25
+SCR: 31,000 points = 12,400 KrisFlyer miles, transfer fee about S$27.00
 KF: 12,000 miles already in KrisFlyer
 Total: 65,200 miles
 Transfer fees to pay: about S$81.50 (one transfer per card)
@@ -214,7 +214,7 @@ See `DAILY_QUIET` in [Settings](#settings).
 the end of that month. A message is sent at 60, 30 and 7 days before, each one only once:
 
 ```
-⏰ Citi Rewards: 52,000 points (20,800 miles) expire at the end of Oct 2026, in 31 days. Transfer fee S$27.25.
+⏰ Citi Rewards: 52,000 points (20,800 KrisFlyer miles) expire at the end of Oct 2026, in 31 days. Transfer fee S$27.25.
 Search Saver seats on singaporeair.com, then transfer in the Citi Mobile app. Allow 1 to 3 working days.
 ```
 

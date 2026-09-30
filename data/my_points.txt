@@ -1,8 +1,10 @@
 # Your balances for the monthly report. Update this file once a month.
 # Lines starting with # are ignored. Remove the # to use an optional line.
 # Replace every [placeholder]; the runner stops if one is left.
+# CR = Citi Rewards points, CPM = Citi PremierMiles (already miles, called Citi Miles),
+# SCR = SC Rewards points, KF = miles already in KrisFlyer. Enter the full balance each time.
 CR: [points] exp [YYYY-MM]
-CPM: [points]
+CPM: [Citi Miles]
 SCR: [points] exp [YYYY-MM]
 KF: [miles already in KrisFlyer] exp [YYYY-MM]
 # Family: Dad KF 30000

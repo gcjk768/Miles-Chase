@@ -70,7 +70,8 @@ def message(card, points, expires, days):
         miles = run_miles.card_miles(card, points)
         fee = run_miles.transfer_fee(card, points)
         about = "about " if card in run_miles.APPROX_FEES else ""
-        text = (f"⏰ {NAMES[card]}: {points:,} points ({miles:,} miles) expire at the end of {when}. "
+        text = (f"⏰ {NAMES[card]}: {points:,} {run_miles.UNITS[card]} ({miles:,} KrisFlyer miles) "
+                f"expire at the end of {when}. "
                 f"Transfer fee {about}S${fee:,.2f}.")
     return f"{text}\n{WHAT_TO_DO[card]}"
 
