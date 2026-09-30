@@ -25,7 +25,9 @@ last month's history and yesterday's prices into `miles_monthly.txt` / `miles_da
    - Optional: a variable (not secret) `CLAUDE_MODEL` to pick a model.
 4. **Fill in your data** and replace every `[placeholder]`:
    - `data/my_points.txt`: your balances. Update it each month before the 1st.
-   - `data/watchlist.txt`: routes to track and your total `MY MILES`.
+   - `data/watchlist.txt`: routes to track. `MY MILES` is worked out from your balances: KrisFlyer
+     miles plus bank points in whole transfer blocks (25,000 Citi Rewards or SC points = 10,000 miles;
+     Citi PremierMiles 1:1 once you have 10,000). Add a `MY MILES: <number>` line to override it.
 5. **Test it**: Actions > Miles reports > Run workflow, pick `daily` or `monthly`.
 
 ## Files
@@ -92,3 +94,22 @@ Failures are posted to Telegram too.
 Update your balances by editing `data/my_points.txt` on the NAS share; no restart needed. After changing
 code with `git pull`, restart the container. To update Claude Code, rebuild the image
 (`sudo docker compose build --no-cache && sudo docker compose up -d`).
+
+## Telegram commands (NAS only)
+
+While the container runs, the bot answers commands posted in your channel (`TELEGRAM_CHAT_ID`).
+Messages from any other chat are ignored.
+
+| Command | What it does |
+| --- | --- |
+| `/points` | Show your balances and the miles they add up to |
+| `/points CR 52000` | Set a balance (`CR`, `CPM`, `SCR` or `KF`); the expiry is kept |
+| `/points SCR 31000 exp 2027-06` | Set a balance and its expiry |
+| `/run daily`, `/run monthly` | Run a report now |
+| `/help` | List the commands |
+
+## Safety checks before posting
+
+Before anything is posted, the runner hides card-like and long account-like numbers (10 or more digits)
+outside links, removes markdown the prompt forbids, and logs a warning if a report is longer than the
+prompt's limit (2,000 characters daily, 4,000 monthly). Long reports are still posted, split into parts.

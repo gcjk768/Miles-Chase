@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -40,10 +41,25 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
+LENGTH_TARGETS = {"daily": 2000, "monthly": 4000}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
 PRICES_LINE = re.compile(r"^PRICES (\d{4}-\d{2}-\d{2})\b.*$")
+
+# Bank points to KrisFlyer miles: (points per transfer block, miles per block, minimum points).
+# Only whole blocks count towards MY MILES, since that's what can actually be transferred.
+CONVERSIONS = {
+    "CR": (25000, 10000, 25000),   # Citi Rewards
+    "SCR": (25000, 10000, 25000),  # Standard Chartered Rewards
+    "CPM": (1, 1, 10000),          # Citi PremierMiles, 1:1 with a 10,000 minimum
+    "KF": (1, 1, 0),               # already in KrisFlyer
+}
+BALANCE_LINE = re.compile(r"^\s*([A-Za-z]+)\s*:\s*([\d,]+)")
+
+# Card numbers (groups of 4) and long digit runs such as KrisFlyer or account numbers.
+ACCOUNT_NUMBER = re.compile(r"\b(?:\d{4}[ -]){3}\d{1,7}\b|\b\d{10,19}\b")
+URL = re.compile(r"https?://\S+")
 
 
 def load_env_file(path=ROOT / ".env"):
@@ -77,6 +93,64 @@ def check_filled_in(path, lines):
     for line in lines:
         if re.search(r"\[[^\]]*\]", line):
             fail(f"{path.relative_to(ROOT)} still has a placeholder: {line!r}")
+
+
+def parse_balances(lines):
+    """{card: points} from lines like 'CR: 50,000 exp 2027-01'."""
+    balances = {}
+    for line in lines:
+        match = BALANCE_LINE.match(line)
+        if match and match.group(1).upper() in CONVERSIONS:
+            balances[match.group(1).upper()] = int(match.group(2).replace(",", ""))
+    return balances
+
+
+def miles_available(balances):
+    """KrisFlyer miles you could have now: KF miles plus whole transfer blocks of bank points."""
+    total = 0
+    for card, points in balances.items():
+        per_block, miles_per_block, minimum = CONVERSIONS[card]
+        if points >= minimum:
+            total += points // per_block * miles_per_block
+    return total
+
+
+def set_balance(card, points, expiry=None):
+    """Update one card's line in data/my_points.txt, keeping its expiry unless a new one is given."""
+    card = card.upper()
+    if card not in CONVERSIONS:
+        raise ValueError(f"unknown card {card}, use one of {', '.join(CONVERSIONS)}")
+    lines = MY_POINTS.read_text(encoding="utf-8").splitlines() if MY_POINTS.exists() else []
+    for i, line in enumerate(lines):
+        match = re.match(rf"^\s*{card}\s*:(.*)$", line, re.IGNORECASE)
+        if match:
+            old = re.search(r"\bexp\s+(\S+)", match.group(1))
+            if not expiry and old and "[" not in old.group(1):
+                expiry = old.group(1)
+            lines[i] = f"{card}: {points}" + (f" exp {expiry}" if expiry else "")
+            break
+    else:
+        lines.append(f"{card}: {points}" + (f" exp {expiry}" if expiry else ""))
+    write_lines(MY_POINTS, lines)
+
+
+def clean_report(report, mode):
+    """Last safety net before posting: hide account-like numbers, strip markdown, check length."""
+    parts = []
+    last = 0
+    for url in URL.finditer(report):  # leave links intact
+        parts.append(ACCOUNT_NUMBER.sub("[number hidden]", report[last:url.start()]))
+        parts.append(url.group())
+        last = url.end()
+    parts.append(ACCOUNT_NUMBER.sub("[number hidden]", report[last:]))
+    report = "".join(parts)
+    report = report.replace("**", "")
+    report = re.sub(r"^#+\s*", "", report, flags=re.MULTILINE)
+    target = LENGTH_TARGETS[mode]
+    if len(report) > target:
+        print(f"warning: the {mode} report is {len(report)} characters, over the {target} target; "
+              "posting it in parts", file=sys.stderr)
+    return report
 
 
 def instructions(mode):
@@ -114,12 +188,16 @@ def build_monthly(today):
 def build_daily(today):
     lines = read_lines(WATCHLIST)
     check_filled_in(WATCHLIST, lines)
-    miles = [l for l in lines if l.upper().startswith("MY MILES:")]
+    override = [l for l in lines if l.upper().startswith("MY MILES:")]
     routes = [l for l in lines if not l.upper().startswith("MY MILES:")]
     if not routes:
         fail("data/watchlist.txt has no routes")
-    if len(miles) != 1:
-        fail("data/watchlist.txt needs exactly one 'MY MILES: <number>' line")
+    if override:
+        miles = override[-1]
+    else:
+        points = read_lines(MY_POINTS)
+        check_filled_in(MY_POINTS, points)
+        miles = f"MY MILES: {miles_available(parse_balances(points))}"
 
     fare_data = read_lines(FARE_DATA)
     # YESTERDAY is the latest saved PRICES line from before today, so a re-run
@@ -139,7 +217,7 @@ def build_daily(today):
         "WATCHLIST",
         *routes,
         "",
-        miles[0],
+        miles,
         "",
         "FARE_DATA (optional, filled by the script from a flight price API)",
         *fare_data,
@@ -227,20 +305,30 @@ def chunks(text, limit=TELEGRAM_LIMIT):
     return pieces
 
 
+def telegram_api(token, method, payload, timeout=30):
+    """Call a Telegram Bot API method and return its result, or raise RuntimeError."""
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/{method}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            reply = json.load(response)
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"Telegram {method} failed: {error.read().decode(errors='replace')}")
+    if not reply.get("ok"):
+        raise RuntimeError(f"Telegram {method} failed: {reply}")
+    return reply["result"]
+
+
 def send_telegram(text, token, chat_id):
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
     for piece in chunks(text):
-        body = json.dumps({
+        telegram_api(token, "sendMessage", {
             "chat_id": chat_id,
             "text": piece,
             "disable_web_page_preview": True,
-        }).encode()
-        request = urllib.request.Request(
-            url, data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            reply = json.load(response)
-        if not reply.get("ok"):
-            fail(f"Telegram rejected the message: {reply}")
+        })
 
 
 def main():
@@ -262,7 +350,7 @@ def main():
         print(prompt)
         return
 
-    report = run_claude(prompt)
+    report = clean_report(run_claude(prompt), args.mode)
 
     if args.mode == "daily":
         report, prices = split_prices_line(report)
@@ -275,7 +363,10 @@ def main():
     if args.no_send or not (token and chat_id):
         print(report)
         return
-    send_telegram(report, token, chat_id)
+    try:
+        send_telegram(report, token, chat_id)
+    except (RuntimeError, OSError) as error:
+        fail(str(error))
     print(f"Posted the {args.mode} report to Telegram ({len(report)} characters).")
 
 

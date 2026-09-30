@@ -3,3 +3,4 @@ __pycache__/
 .env
 miles.log
 state/scheduler.json
+state/telegram_offset.txt

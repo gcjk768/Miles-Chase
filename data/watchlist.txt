@@ -3,4 +3,6 @@
 SIN Tokyo, Mar 2027
 SIN London, flexible
 SIN Sydney, Dec 2026
-MY MILES: [total KrisFlyer miles available]
+# MY MILES is worked out from data/my_points.txt: KrisFlyer miles plus bank points in whole
+# transfer blocks. To use your own figure instead, uncomment this line:
+# MY MILES: 65000

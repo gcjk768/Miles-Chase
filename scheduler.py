@@ -4,6 +4,7 @@
 Runs `run_miles.py daily` at 07:53 and `run_miles.py monthly` at 08:07 on the 1st,
 Singapore time. If the machine was off at that time, the report runs as soon as it's
 back, as long as it's still the same day. Failures are posted to Telegram.
+Between reports it answers Telegram commands such as /points (see telegram_bot.py).
 """
 
 import json
@@ -13,11 +14,13 @@ import time
 from datetime import datetime, time as clock
 
 import run_miles
+import telegram_bot
 
 DAILY_AT = clock(7, 53)
 MONTHLY_AT = clock(8, 7)
 LAST_RUN = run_miles.STATE / "scheduler.json"
 CHECK_EVERY_SECONDS = 30
+TELEGRAM_WAIT_SECONDS = 20
 
 
 def due_jobs(now, last_run):
@@ -72,7 +75,7 @@ def notify_failure(mode, output):
     tail = "\n".join(output.splitlines()[-10:])
     try:
         run_miles.send_telegram(f"⚠️ Miles {mode} report failed.\n{tail}", token, chat_id)
-    except (SystemExit, OSError) as error:
+    except (RuntimeError, OSError) as error:
         log(f"couldn't post the failure to Telegram: {error}")
 
 
@@ -80,14 +83,24 @@ def main():
     run_miles.load_env_file()
     last_run = load_last_run(datetime.now(run_miles.SGT))
     log(f"scheduler started: daily at {DAILY_AT:%H:%M}, monthly on the 1st at {MONTHLY_AT:%H:%M} (SGT)")
+    token = run_miles.os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = run_miles.os.environ.get("TELEGRAM_CHAT_ID")
     while True:
+        if token and chat_id:
+            try:
+                # Doubles as the wait between checks: returns early when a message arrives.
+                telegram_bot.poll(token, chat_id, run, timeout=TELEGRAM_WAIT_SECONDS)
+            except (RuntimeError, OSError, ValueError) as error:
+                log(f"Telegram commands unavailable: {error}")
+                time.sleep(CHECK_EVERY_SECONDS)
+        else:
+            time.sleep(CHECK_EVERY_SECONDS)
         now = datetime.now(run_miles.SGT)
         for mode, key in due_jobs(now, last_run):
             # Mark first, so a failing report isn't retried every 30 seconds.
             last_run[mode] = key
             save_last_run(last_run)
             run(mode)
-        time.sleep(CHECK_EVERY_SECONDS)
 
 
 if __name__ == "__main__":
