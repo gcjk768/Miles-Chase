@@ -1,0 +1,89 @@
+name: Miles reports
+
+on:
+  schedule:
+    - cron: "53 23 * * *" # daily tracker, 07:53 Singapore time
+    - cron: "7 0 1 * *"   # monthly report, 1st of the month, 08:07 Singapore time
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Which report to run
+        type: choice
+        options: [daily, monthly]
+        default: daily
+
+permissions:
+  contents: write
+
+# Both reports commit to state/, so never run two at once.
+concurrency:
+  group: miles-state
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Refuse to run in a public repository
+        if: ${{ !github.event.repository.private }}
+        run: |
+          echo "::error::This repository is public. The reports and state/ contain your balances. Make the repository private (Settings > General > Danger Zone), then re-run."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Pick the report
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            mode="$INPUT_MODE"
+          elif [ "$SCHEDULE" = "7 0 1 * *" ]; then
+            mode=monthly
+          else
+            mode=daily
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Run the report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+        run: |
+          for name in ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Add the $name secret (Settings > Secrets and variables > Actions)."
+              exit 1
+            fi
+          done
+          python run_miles.py "${{ steps.mode.outputs.mode }}"
+
+      - name: Save history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state
+          if git diff --cached --quiet; then
+            echo "No state changes."
+            exit 0
+          fi
+          git commit -m "Save ${{ steps.mode.outputs.mode }} report state"
+          git pull --rebase
+          git push

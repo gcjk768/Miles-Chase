@@ -1,0 +1,6 @@
+# Routes for the daily fare tracker, one per line.
+# Lines starting with # are ignored.
+SIN Tokyo, Mar 2027
+SIN London, flexible
+SIN Sydney, Dec 2026
+MY MILES: [total KrisFlyer miles available]
