@@ -52,7 +52,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500, "tickets": 4500}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500, "tickets": 7000}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -376,16 +376,37 @@ aren't sure, say so rather than guess. Never ask for or repeat card or account n
 # The /tickets list (also posted after every /points update). Fixed layout, one destination per
 # block, so sections() posts Business and Economy as separate, readable messages.
 BOOK_URL = "https://www.singaporeair.com/en_UK/sg/home"
-# Listed in /tickets, China first (the user's focus; Xiamen is a likely trip next year).
+# Every destination on singaporeair.com "Where we fly" (Singapore Airlines and Scoot, not partner
+# airlines), read 2026-09-30. China first: the user's focus, with Xiamen a likely trip next year.
+# "(Scoot)" = Scoot only. Re-check the page now and then; routes change.
 TICKET_DESTINATIONS = {
-    "🇨🇳 China": "Xiamen, Shanghai, Beijing, Guangzhou, Shenzhen, Chengdu, Chongqing, Kunming, "
-                "Hangzhou, Hong Kong, Macau",
-    "🇯🇵 Japan": "Tokyo, Osaka, Sapporo (Hokkaido), Fukuoka, Nagoya",
-    "🇰🇷 South Korea": "Seoul, Busan",
+    "🇨🇳 China": "Xiamen, Shanghai, Beijing, Guangzhou, Shenzhen, Chengdu, Chongqing, Hangzhou, "
+                "Guiyang, Hong Kong, Fuzhou (Scoot), Haikou (Scoot), Macau (Scoot), Nanjing (Scoot), "
+                "Nanning (Scoot), Qingdao (Scoot), Shantou (Scoot), Shenyang (Scoot), "
+                "Tianjin (Scoot), Wuhan (Scoot), Xi'an (Scoot), Zhengzhou (Scoot)",
+    "🇯🇵 Japan": "Tokyo, Osaka, Nagoya, Fukuoka, Sapporo (Scoot), Okinawa (Scoot)",
+    "🇰🇷 South Korea": "Seoul, Busan, Jeju (Scoot)",
     "🇹🇼 Taiwan": "Taipei",
-    "🌴 Southeast Asia": "Bangkok, Phuket, Bali, Kuala Lumpur, Penang, Ho Chi Minh City, Hanoi, "
-                        "Da Nang, Manila, Cebu",
-    "🏝️ South Asia": "Maldives (Male), Colombo",
+    "🌴 Southeast Asia": "Kuala Lumpur, Penang, Bangkok, Phuket, Chiang Mai, Bali, Jakarta, Surabaya, "
+                        "Medan, Manila, Cebu, Ho Chi Minh City, Hanoi, Da Nang, Phnom Penh, Siem Reap, "
+                        "Yangon, Bandar Seri Begawan, Krabi (Scoot), Langkawi (Scoot), "
+                        "Kota Kinabalu (Scoot), Kuching (Scoot), Ipoh (Scoot), Malacca (Scoot), "
+                        "Kuantan (Scoot), Kota Bharu (Scoot), Miri (Scoot), Sibu (Scoot), "
+                        "Bintulu (Scoot), Hat Yai (Scoot), Chiang Rai (Scoot), Phu Quoc (Scoot), "
+                        "Nha Trang (Scoot), Vientiane (Scoot), Lombok (Scoot), Labuan Bajo (Scoot), "
+                        "Yogyakarta (Scoot), Makassar (Scoot), Manado (Scoot), Balikpapan (Scoot), "
+                        "Padang (Scoot), Palembang (Scoot), Pekanbaru (Scoot), Pontianak (Scoot), "
+                        "Semarang (Scoot), Tanjung Pandan (Scoot), Majalengka (Scoot), "
+                        "Clark/Angeles (Scoot), Boracay/Caticlan (Scoot), Davao (Scoot), Iloilo (Scoot)",
+    "🇮🇳 South Asia": "Male (Maldives), Colombo, Kathmandu, Dhaka, Delhi, Mumbai, Bengaluru, Chennai, "
+                     "Hyderabad, Kolkata, Kochi, Ahmedabad, Amritsar (Scoot), Coimbatore (Scoot), "
+                     "Thiruvananthapuram (Scoot), Tiruchirappalli (Scoot), Visakhapatnam (Scoot)",
+    "🇦🇺 Australia & NZ": "Perth, Darwin, Adelaide, Melbourne, Sydney, Brisbane, Cairns, Auckland, "
+                         "Christchurch",
+    "🕌 Middle East & Africa": "Dubai, Riyadh, Jeddah (Scoot), Istanbul, Johannesburg, Cape Town",
+    "🇪🇺 Europe": "London, Manchester, Paris, Frankfurt, Munich, Amsterdam, Brussels, Zurich, "
+                 "Copenhagen, Milan, Rome, Barcelona, Madrid, Athens (Scoot)",
+    "🇺🇸 USA": "Los Angeles, San Francisco, Seattle, New York",
 }
 TICKETS_PROMPT = f"""List the KrisFlyer Saver award tickets from Singapore the user can book now.
 Count only miles they can actually move: KrisFlyer miles, plus card points in whole transfer blocks
@@ -405,9 +426,8 @@ Left after: 45,500 / ❌ not enough
 (Cover these, in this region order. Put cities that cost the same miles in one block, as above,
 so each block is one price; prefix each block with its region flag:
 {chr(10).join(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items())}
-Mark a city "(Scoot)", "(seasonal)" or "(partner)" when Singapore Airlines itself doesn't fly
-there year-round, and leave out any city with no KrisFlyer award at all. "❌ not enough" when
-unaffordable.)
+Keep "(Scoot)" on Scoot-only cities and put them in ECONOMY only, since Scoot has no business
+class. Leave out any city with no KrisFlyer award. "❌ not enough" when unaffordable.)
 
 🎯 Next goal: Maldives return 128,000 (28,000 short)
 
