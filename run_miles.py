@@ -414,8 +414,9 @@ TICKET_DESTINATIONS = {
 TICKETS_PROMPT = f"""List the KrisFlyer Saver award tickets from Singapore the user can book now.
 Count only miles they can actually move: KrisFlyer miles, plus card points in whole transfer blocks
 at or above each bank's minimum (check it; Citi and Standard Chartered use blocks). Look up current
-Saver prices (the 2026 chart). Follow this layout exactly: plain text, no markdown, no tables,
-numbers with commas, a blank line between blocks.
+Saver prices (the 2026 chart); take your time and use up to 15 web searches. Follow this layout
+exactly: plain text, no markdown, no tables, numbers with commas, a blank line between blocks.
+Start directly with the 💰 line: no introduction before it.
 
 💰 ESTIMATED MILES
 Total if everything converted: 107,959
@@ -443,14 +444,17 @@ Sapporo, Okinawa (Scoot)
 🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
 💵 Taxes about S$60 one way
 
-(One section per region, in this order, headed by its flag and name in capitals:
+(One section per region, in EXACTLY this order, China first, headed by its flag and name in
+capitals:
 {chr(10).join(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items())}
 Within a region, put cities that cost the same miles in one block, cheapest block first. Each
 block has the city names, then these lines as in the example: 🛫 direct or via where, flight
 time and how often; one line per cabin actually sold on the route (Economy, Premium Economy,
 Business, First, in that order) so the cabins compare side by side; 💵 estimated taxes; and
-📈 Advantage prices for when Saver is sold out. Say "about" for estimates and leave a line out
-rather than guess it. The numbers in the example are placeholders; look up the real ones. When the user can't afford a fare, write "❌ N short" with the exact miles missing,
+📈 Advantage prices for when Saver is sold out. Always give the 🛫 and 💵 lines: flight times,
+direct or via, and typical taxes are well known, so give them as "about" figures from what you
+know. For award prices, use what you found and say "about" or "unconfirmed" when unsure; leave
+out only a price you have no basis for. The numbers in the example are placeholders. When the user can't afford a fare, write "❌ N short" with the exact miles missing,
 never just "not enough". Scoot-only cities keep "(Scoot)" and get the Economy line only, since
 Scoot has no business class. Leave out any city with no KrisFlyer award.)
 
