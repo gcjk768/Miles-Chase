@@ -17,7 +17,9 @@ last month's history and yesterday's prices into `miles_monthly.txt` / `miles_da
    private channel as an admin. To get the channel's chat ID, post something in the channel, then open
    `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id` (it starts with `-100`).
 3. **Add secrets** under Settings > Secrets and variables > Actions:
-   - `ANTHROPIC_API_KEY` from console.anthropic.com
+   - `CLAUDE_CODE_OAUTH_TOKEN`: runs `claude -p` on your Claude Pro or Max subscription. On your own computer,
+     install Claude Code (`npm install -g @anthropic-ai/claude-code`), run `claude setup-token` and paste the
+     token it prints. Or use `ANTHROPIC_API_KEY` from console.anthropic.com to pay per use instead.
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_CHAT_ID`
    - Optional: a variable (not secret) `CLAUDE_MODEL` to pick a model.
@@ -37,8 +39,8 @@ last month's history and yesterday's prices into `miles_monthly.txt` / `miles_da
 
 ## Running locally
 
-Needs Python 3.9+ and Claude Code (`npm install -g @anthropic-ai/claude-code`), signed in or with
-`ANTHROPIC_API_KEY` set.
+Needs Python 3.9+ and Claude Code (`npm install -g @anthropic-ai/claude-code`). If you're signed in to
+`claude` already, it uses your subscription, the same as running `claude -p` yourself.
 
 ```sh
 python run_miles.py daily --dry-run   # show the assembled prompt, no Claude call

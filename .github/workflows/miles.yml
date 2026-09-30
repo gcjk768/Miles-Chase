@@ -62,12 +62,17 @@ jobs:
 
       - name: Run the report
         env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
         run: |
-          for name in ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Add the CLAUDE_CODE_OAUTH_TOKEN secret (from 'claude setup-token') or ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          for name in TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
             if [ -z "${!name}" ]; then
               echo "::error::Add the $name secret (Settings > Secrets and variables > Actions)."
               exit 1
