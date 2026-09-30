@@ -9,7 +9,7 @@ Stack folder `/volume1/docker/miles-chase` (Dockge). From the repo: `./deploy.sh
 `.env` on the NAS (chmod 600):
 ```
 TELEGRAM_BOT_TOKEN=<from BotFather>
-TELEGRAM_CHAT_ID=-1002069000031/<Miles topic id>   # James Channel topic
+TELEGRAM_CHAT_ID=-1002069000031/2988   # James Channel topic "Miles-Chase"
 CLAUDE_CODE_OAUTH_TOKEN=<same as sg-recipe-bot>
 ```
 Bot must be a member of James Channel. Commands must be sent inside the Miles topic.

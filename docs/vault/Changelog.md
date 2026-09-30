@@ -10,3 +10,4 @@ updated: 2026-09-30
 - fix: compose `pull_policy: build` (Dockge Update now rebuilds), runs as uid 1000, TZ set.
 - feat: [deploy.sh](../../deploy.sh) — redeploys never overwrite `data/`.
 - docs: vault created.
+- ops: bot @jameskoh_miles_bot, topic 2988, deployed to NAS (healthy, claude -p verified in container).
