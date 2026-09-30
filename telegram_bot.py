@@ -22,6 +22,13 @@ import reminders
 import run_miles
 
 OFFSET = run_miles.STATE / "telegram_offset.txt"
+# Posted by Claude after every /points update.
+TICKETS_QUESTION = (
+    "Which KrisFlyer award tickets from Singapore can I book right now with my total miles? "
+    "List them by cabin (economy, premium economy, business, first), Saver one way and return, "
+    "for popular destinations, with the miles each costs and how many I'd have left. "
+    "Then the next 2 or 3 tickets just out of reach and how many miles short I am."
+)
 HELP = (
     "Commands:\n"
     "/points: show balances\n"
@@ -49,6 +56,7 @@ def poll(token, chat_id, run_report, timeout=20):
         "timeout": timeout,
         "allowed_updates": ["message", "channel_post"],
     }, timeout=timeout + 10)
+    balances_changed = False
     for update in updates:
         # Save the offset first, so a command that crashes isn't handled again on restart.
         OFFSET.parent.mkdir(parents=True, exist_ok=True)
@@ -62,6 +70,10 @@ def poll(token, chat_id, run_report, timeout=20):
         reply = handle(message.get("text", ""), run_report)
         if reply:
             run_miles.send_telegram(reply, token, chat_id)
+            balances_changed |= reply.startswith("Updated ")
+    # After the balance reply, and once per batch, so four quick /points updates cost one Claude run.
+    if balances_changed:
+        run_report("ask", TICKETS_QUESTION)
 
 
 def handle(text, run_report):

@@ -276,6 +276,25 @@ class TelegramCommands(TempFiles):
         self.assertIn("Total: 65,200 miles", prompt)
         self.assertTrue(prompt.rstrip().endswith("Transfer CR now?"))
 
+    def test_points_update_lists_tickets_once(self):
+        events = []
+        original = run_miles.telegram_api
+
+        def fake_api(token, method, payload, timeout=30):
+            if method == "getUpdates":
+                return [{"update_id": i, "message": {"chat": {"id": -100}, "text": text}}
+                        for i, text in enumerate(["/points CR 60000", "/points KF 1000", "/points"])]
+            events.append("reply")
+            return {}
+
+        run_miles.telegram_api = fake_api
+        try:
+            telegram_bot.poll("token", "-100", lambda *a: events.append(a))
+        finally:
+            run_miles.telegram_api = original
+        self.assertEqual(events, ["reply"] * 3 + [("ask", telegram_bot.TICKETS_QUESTION)])
+        self.assertLessEqual(len(telegram_bot.TICKETS_QUESTION), run_miles.ASK_LIMIT)
+
     def test_topic_chat_id(self):
         self.assertEqual(run_miles.split_chat_id("-100123/2765"), ("-100123", 2765))
         self.assertEqual(run_miles.split_chat_id(-100123), ("-100123", None))
