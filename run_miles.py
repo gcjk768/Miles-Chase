@@ -376,6 +376,8 @@ aren't sure, say so rather than guess. Never ask for or repeat card or account n
 # The /tickets list (also posted after every /points update). Fixed layout, one destination per
 # block, so sections() posts Business and Economy as separate, readable messages.
 BOOK_URL = "https://www.singaporeair.com/en_UK/sg/home"
+# Always listed in /tickets (the user's likely trips); Claude adds a few other popular ones.
+TICKET_DESTINATIONS = ["Xiamen (China)", "Seoul", "Osaka", "Tokyo", "Sapporo (Hokkaido)"]
 TICKETS_PROMPT = f"""List the KrisFlyer Saver award tickets from Singapore the user can book now.
 Count only miles they can actually move: KrisFlyer miles, plus card points in whole transfer blocks
 at or above each bank's minimum (check it; Citi and Standard Chartered use blocks). Look up current
@@ -391,7 +393,10 @@ numbers with commas, a blank line between blocks.
 54,500 / 109,000 miles
 Left after: 45,500 / ❌ not enough
 
-(6 to 8 popular destinations, nearest first, same 3 lines each; "❌ not enough" when unaffordable)
+(always include {", ".join(TICKET_DESTINATIONS)}, plus 3 or 4 other popular destinations;
+nearest first, same 3 lines each; "❌ not enough" when unaffordable. If Singapore Airlines doesn't
+fly a route directly, give the nearest SIA or Scoot option and say so in the city line, e.g.
+"🇯🇵 Sapporo (seasonal)" or "🇨🇳 Xiamen (via Scoot / partner)")
 
 🎯 Next goal: Sydney return 144,000 (44,000 short)
 

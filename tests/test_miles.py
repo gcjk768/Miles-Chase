@@ -299,6 +299,8 @@ class TelegramCommands(TempFiles):
         prompt = run_miles.build_ask(date(2026, 9, 30), "", "tickets")
         self.assertIn("BUSINESS SAVER", prompt)
         self.assertIn(run_miles.BOOK_URL, prompt)
+        for city in ("Xiamen", "Seoul", "Osaka", "Sapporo"):
+            self.assertIn(city, prompt)
 
     def test_topic_chat_id(self):
         self.assertEqual(run_miles.split_chat_id("-100123/2765"), ("-100123", 2765))

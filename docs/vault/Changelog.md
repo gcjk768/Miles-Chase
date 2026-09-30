@@ -5,6 +5,7 @@ updated: 2026-09-30
 # Changelog
 
 ## 2026-09-30
+- feat: `/tickets` always lists Xiamen, Seoul, Osaka, Tokyo, Sapporo (`TICKET_DESTINATIONS` in [run_miles.py](../../run_miles.py)).
 - feat: "typing…" shown in the topic while Claude jobs run (`CLAUDE_MODES` in [scheduler.py](../../scheduler.py), re-sent every 5 s from the heartbeat loop).
 - feat: `tickets` job / `/tickets` command: fixed, spaced layout (Business then Economy, one destination per block, one message per section), counts only transferable miles, verified SG booking link ([run_miles.py](../../run_miles.py) `TICKETS_PROMPT`).
 - feat: new miles videos from YouTube channel feeds (MileLion, Suitesmile, Lets Get To The Points; HoneyMoneySG and Kelvin filtered to miles topics) posted as "🎥 New miles videos" ([news_watch.py](../../news_watch.py)).
