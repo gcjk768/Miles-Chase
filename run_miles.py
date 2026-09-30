@@ -52,7 +52,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500, "tickets": 3000}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 2500, "tickets": 4500}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -376,8 +376,17 @@ aren't sure, say so rather than guess. Never ask for or repeat card or account n
 # The /tickets list (also posted after every /points update). Fixed layout, one destination per
 # block, so sections() posts Business and Economy as separate, readable messages.
 BOOK_URL = "https://www.singaporeair.com/en_UK/sg/home"
-# Always listed in /tickets (the user's likely trips); Claude adds a few other popular ones.
-TICKET_DESTINATIONS = ["Xiamen (China)", "Seoul", "Osaka", "Tokyo", "Sapporo (Hokkaido)"]
+# Listed in /tickets, China first (the user's focus; Xiamen is a likely trip next year).
+TICKET_DESTINATIONS = {
+    "🇨🇳 China": "Xiamen, Shanghai, Beijing, Guangzhou, Shenzhen, Chengdu, Chongqing, Kunming, "
+                "Hangzhou, Hong Kong, Macau",
+    "🇯🇵 Japan": "Tokyo, Osaka, Sapporo (Hokkaido), Fukuoka, Nagoya",
+    "🇰🇷 South Korea": "Seoul, Busan",
+    "🇹🇼 Taiwan": "Taipei",
+    "🌴 Southeast Asia": "Bangkok, Phuket, Bali, Kuala Lumpur, Penang, Ho Chi Minh City, Hanoi, "
+                        "Da Nang, Manila, Cebu",
+    "🏝️ South Asia": "Maldives (Male), Colombo",
+}
 TICKETS_PROMPT = f"""List the KrisFlyer Saver award tickets from Singapore the user can book now.
 Count only miles they can actually move: KrisFlyer miles, plus card points in whole transfer blocks
 at or above each bank's minimum (check it; Citi and Standard Chartered use blocks). Look up current
@@ -389,16 +398,18 @@ numbers with commas, a blank line between blocks.
 
 💼 BUSINESS SAVER · one way / return
 
-🇯🇵 Tokyo
+🇯🇵 Tokyo, Osaka, Sapporo
 54,500 / 109,000 miles
 Left after: 45,500 / ❌ not enough
 
-(always include {", ".join(TICKET_DESTINATIONS)}, plus 3 or 4 other popular destinations;
-nearest first, same 3 lines each; "❌ not enough" when unaffordable. If Singapore Airlines doesn't
-fly a route directly, give the nearest SIA or Scoot option and say so in the city line, e.g.
-"🇯🇵 Sapporo (seasonal)" or "🇨🇳 Xiamen (via Scoot / partner)")
+(Cover these, in this region order. Put cities that cost the same miles in one block, as above,
+so each block is one price; prefix each block with its region flag:
+{chr(10).join(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items())}
+Mark a city "(Scoot)", "(seasonal)" or "(partner)" when Singapore Airlines itself doesn't fly
+there year-round, and leave out any city with no KrisFlyer award at all. "❌ not enough" when
+unaffordable.)
 
-🎯 Next goal: Sydney return 144,000 (44,000 short)
+🎯 Next goal: Maldives return 128,000 (28,000 short)
 
 🪑 ECONOMY SAVER · one way / return
 
