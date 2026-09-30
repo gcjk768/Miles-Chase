@@ -24,15 +24,17 @@ import run_miles
 OFFSET = run_miles.STATE / "telegram_offset.txt"
 # Posted by Claude after every /points update.
 TICKETS_QUESTION = (
-    "Which KrisFlyer award tickets from Singapore can I book right now with my total miles? "
-    "List them by cabin (economy, premium economy, business, first), Saver one way and return, "
-    "for popular destinations, with the miles each costs and how many I'd have left. "
-    "Then the next 2 or 3 tickets just out of reach and how many miles short I am."
+    "Which KrisFlyer Saver award tickets from Singapore can I book now with my total miles? "
+    "Two sections, BUSINESS then ECONOMY: popular destinations, one way and return, miles each "
+    "costs and miles left. End each section with the next 2 tickets just out of reach and how "
+    "many miles short. Last line: the official singaporeair.com page to book a KrisFlyer "
+    "redemption (check the link works)."
 )
 HELP = (
     "Commands:\n"
     "/points: show balances\n"
-    "/points CR 52000: set a balance (CR, CPM, SCR or KF)\n"
+    "/points CR 52000: set a balance (CR, CPM, SCR or KF); Claude then lists the\n"
+    "  Business and Economy tickets you can book\n"
     "/points SCR 31000 exp 2027-06: set a balance and expiry\n"
     "/watch: list routes\n"
     "/watch add SIN Bali, Jun 2027: add a route\n"
