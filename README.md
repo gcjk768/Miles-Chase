@@ -37,15 +37,34 @@ last month's history and yesterday's prices into `miles_monthly.txt` / `miles_da
 | `data/fare_data.txt` | Optional fares from a flight price API. If present, Claude uses it instead of searching. | You or a future script |
 | `state/` | Monthly balance history and daily PRICES lines. | The workflow |
 
-## Running locally
+## Run on your computer or a NAS (no GitHub Actions)
 
-Needs Python 3.9+ and Claude Code (`npm install -g @anthropic-ai/claude-code`). If you're signed in to
-`claude` already, it uses your subscription, the same as running `claude -p` yourself.
+Needs Python 3.9+, Node.js 18+ and Claude Code. Nothing leaves your machine except the Claude call
+and the Telegram post, so the repo can stay public as long as you don't push `data/` or `state/` changes.
 
 ```sh
-python run_miles.py daily --dry-run   # show the assembled prompt, no Claude call
-python run_miles.py daily --no-send   # run Claude and print instead of posting
-python run_miles.py monthly           # posts to Telegram if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set
+git clone https://github.com/gcjk768/Miles-Chase.git && cd Miles-Chase
+npm install -g @anthropic-ai/claude-code
+claude                      # sign in once with your Claude subscription, then /exit
+cp .env.example .env        # add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+# edit data/my_points.txt and data/watchlist.txt
+
+python3 run_miles.py daily --dry-run   # check the assembled prompt, no Claude call
+python3 run_miles.py daily --no-send   # run Claude, print instead of posting
+python3 run_miles.py daily             # run Claude and post to Telegram
 ```
 
-A local run also writes to `state/`, so commit it or discard it to keep the workflow's history clean.
+To schedule it, add these lines with `crontab -e` (or the NAS's task scheduler). Cron has a minimal
+PATH, so set `CLAUDE_BIN` in `.env` to the output of `which claude`, and use full paths below:
+
+```cron
+53 7 * * * cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py daily >> miles.log 2>&1
+7 8 1 * *  cd /path/to/Miles-Chase && /usr/bin/python3 run_miles.py monthly >> miles.log 2>&1
+```
+
+Those times assume the machine's clock is on Singapore time. Moving from computer to NAS: copy the
+folder including `.env`, `data/` and `state/` so the history comes along. On a headless NAS, sign in
+with `claude setup-token` on your computer and put `CLAUDE_CODE_OAUTH_TOKEN=...` in the NAS's `.env`.
+
+If you run it this way, disable the GitHub workflow (Actions > Miles reports > ... > Disable workflow)
+so it doesn't also run and fail every morning.

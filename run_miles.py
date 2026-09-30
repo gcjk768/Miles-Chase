@@ -9,9 +9,10 @@ Options:
     --dry-run   print the assembled prompt and stop (no Claude call, nothing saved)
     --no-send   run Claude and save state, but print instead of posting to Telegram
 
-Environment:
+Environment (or a .env file next to this script, see .env.example):
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   where to post (if unset, the report is printed)
     CLAUDE_MODEL                           optional model override for `claude -p`
+    CLAUDE_BIN                             path to `claude` if it isn't on PATH (e.g. under cron)
 """
 
 import argparse
@@ -43,6 +44,18 @@ CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
 PRICES_LINE = re.compile(r"^PRICES (\d{4}-\d{2}-\d{2})\b.*$")
+
+
+def load_env_file(path=ROOT / ".env"):
+    """Set KEY=value lines from .env, without overriding variables already set."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
 def fail(message):
@@ -138,7 +151,7 @@ def build_daily(today):
 
 
 def run_claude(prompt):
-    cmd = ["claude", "-p", "--allowedTools", "WebSearch", "WebFetch"]
+    cmd = [os.environ.get("CLAUDE_BIN") or "claude", "-p", "--allowedTools", "WebSearch", "WebFetch"]
     if os.environ.get("CLAUDE_MODEL"):
         cmd += ["--model", os.environ["CLAUDE_MODEL"]]
     try:
@@ -237,6 +250,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-send", action="store_true")
     args = parser.parse_args()
+    load_env_file()
 
     today = datetime.now(SGT).date()
     if args.mode == "monthly":
