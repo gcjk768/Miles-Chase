@@ -12,6 +12,7 @@ Only messages in TELEGRAM_CHAT_ID (your private channel or chat with the bot) ar
     /goal Tokyo business, 2 pax, Mar 2027   set the goal
     /goal clear                    remove the goal
     /run daily   /run monthly      run a report now (daily always posts in full)
+    /ask Transfer CR now?          ask Claude (claude -p) with your balances as context
     /help                          list the commands
 """
 
@@ -32,7 +33,8 @@ HELP = (
     "/goal: show the goal\n"
     "/goal Tokyo business, 2 pax, Mar 2027: set the goal\n"
     "/goal clear: remove the goal\n"
-    "/run daily or /run monthly: run a report now"
+    "/run daily or /run monthly: run a report now\n"
+    "/ask <question>: ask Claude, using your balances (takes a minute or two)"
 )
 
 
@@ -52,7 +54,10 @@ def poll(token, chat_id, run_report, timeout=20):
         OFFSET.parent.mkdir(parents=True, exist_ok=True)
         OFFSET.write_text(str(update["update_id"] + 1))
         message = update.get("message") or update.get("channel_post")
-        if not message or str(message["chat"]["id"]) != str(chat_id):
+        chat, topic = run_miles.split_chat_id(chat_id)
+        # In a group with topics, only commands sent in the bot's own topic count.
+        if not message or str(message["chat"]["id"]) != chat or (
+                topic and message.get("message_thread_id") != topic):
             continue
         reply = handle(message.get("text", ""), run_report)
         if reply:
@@ -78,6 +83,14 @@ def handle(text, run_report):
             run_report(mode, "--full") if mode == "daily" else run_report(mode)
             return None
         return "Use /run daily or /run monthly"
+    if command == "/ask":
+        question = " ".join(words[1:])
+        try:
+            run_miles.check_user_text(question, "question", limit=run_miles.ASK_LIMIT)
+        except ValueError as error:
+            return f"{error} Example: /ask Should I transfer CR now for Tokyo?"
+        run_report("ask", question)
+        return None
     if command in ("/help", "/start"):
         return HELP
     return None

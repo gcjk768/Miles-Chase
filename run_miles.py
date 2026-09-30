@@ -6,6 +6,7 @@ Usage:
     python run_miles.py monthly    # monthly miles coach report
     python run_miles.py reminders  # expiry reminders, no Claude needed
     python run_miles.py news       # new posts on the miles blogs, no Claude needed
+    python run_miles.py ask "Transfer CR now for Tokyo?"   # one-off question to Claude
 
 Options:
     --dry-run   print the assembled prompt and stop (no Claude call, nothing saved)
@@ -13,7 +14,8 @@ Options:
     --full      daily only: post the full report even on a quiet day
 
 Environment (or a .env file next to this script, see .env.example):
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   where to post (if unset, the report is printed)
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   where to post (if unset, the report is printed);
+                                           use -100123/2765 to post in a group topic
     CLAUDE_MODEL                           optional model override for `claude -p`
     CLAUDE_BIN                             path to `claude` if it isn't on PATH (e.g. under cron)
     SPLIT_MESSAGES                         "sections" (default) posts each report section as its
@@ -49,7 +51,7 @@ SEPARATOR = "=============================="
 HISTORY_MONTHS_KEPT = 24
 PRICES_DAYS_KEPT = 400
 TELEGRAM_LIMIT = 4000  # Telegram allows 4096 characters per message
-LENGTH_TARGETS = {"daily": 2000, "monthly": 3500}  # the limits the prompts ask for
+LENGTH_TARGETS = {"daily": 2000, "monthly": 3500, "ask": 1500}  # the limits the prompts ask for
 CLAUDE_TIMEOUT_SECONDS = 20 * 60
 
 SGT = timezone(timedelta(hours=8))
@@ -83,6 +85,7 @@ SPLIT_MODES = ("sections", "off")
 SHORT_SECTION = 200  # sections up to this long share a message with neighbouring short ones
 GROUP_LIMIT = 900    # longest message made by grouping short sections
 USER_TEXT_LIMIT = 80  # longest route or goal accepted from Telegram
+ASK_LIMIT = 500       # longest /ask question
 
 
 def load_env_file(path=ROOT / ".env"):
@@ -183,12 +186,12 @@ def set_balance(card, points, expiry=None):
     write_lines(MY_POINTS, lines)
 
 
-def check_user_text(text, what):
+def check_user_text(text, what, limit=USER_TEXT_LIMIT):
     """Validate a route or goal typed in Telegram before it goes into a data file."""
     if not text:
         raise ValueError(f"Give a {what}.")
-    if len(text) > USER_TEXT_LIMIT:
-        raise ValueError(f"Keep the {what} under {USER_TEXT_LIMIT} characters.")
+    if len(text) > limit:
+        raise ValueError(f"Keep the {what} under {limit} characters.")
     if "[" in text or "]" in text or text.lstrip().startswith("#"):
         raise ValueError(f"The {what} can't contain [ ] or start with #.")
 
@@ -362,6 +365,36 @@ def build_daily(today):
     ])
 
 
+ASK_PROMPT = """You are a KrisFlyer miles coach for a Singapore-based user. Answer their question
+using their data below and, when it needs current facts (award space, transfer bonuses, card
+promos, fees), a quick web search. Plain text for Telegram, no markdown, under {limit} characters.
+Say which numbers are from their data and which you looked up; link the sources you used. If you
+aren't sure, say so rather than guess. Never ask for or repeat card or account numbers."""
+
+
+def build_ask(today, question):
+    check_user_text(question, "question", limit=ASK_LIMIT)
+    points = read_lines(MY_POINTS)
+    return "\n".join([
+        ASK_PROMPT.format(limit=LENGTH_TARGETS["ask"]),
+        "",
+        SEPARATOR,
+        f"TODAY: {today.isoformat()}",
+        "",
+        "MY POINTS",
+        *points,
+        "",
+        "MILES AND TRANSFER FEES IF ALL CONVERTED (calculated by the script)",
+        *miles_summary(parse_balances(points)),
+        "",
+        "WATCHLIST",
+        *watchlist_routes(),
+        "",
+        "QUESTION",
+        question,
+    ])
+
+
 def run_claude(prompt, tools=("WebSearch", "WebFetch")):
     cmd = [os.environ.get("CLAUDE_BIN") or "claude", "-p"]
     if tools:
@@ -490,14 +523,24 @@ def sections(report):
     return messages
 
 
+def split_chat_id(chat_id):
+    """"-100123/2765" (a group topic) -> ("-100123", 2765); a plain chat id -> (chat_id, None)."""
+    chat, _, topic = str(chat_id).partition("/")
+    return chat, int(topic) if topic else None
+
+
 def send_telegram(text, token, chat_id, silent=False):
+    chat, topic = split_chat_id(chat_id)
     for i, piece in enumerate(chunks(text)):
-        telegram_api(token, "sendMessage", {
-            "chat_id": chat_id,
+        payload = {
+            "chat_id": chat,
             "text": piece,
             "disable_web_page_preview": True,
             "disable_notification": silent or i > 0,
-        })
+        }
+        if topic:
+            payload["message_thread_id"] = topic
+        telegram_api(token, "sendMessage", payload)
 
 
 def send_report(report, token, chat_id, split):
@@ -511,7 +554,8 @@ def send_report(report, token, chat_id, split):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news"]))
+    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news", "ask"]))
+    parser.add_argument("question", nargs="*", help="ask only: the question for Claude")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-send", action="store_true")
     parser.add_argument("--full", action="store_true")
@@ -552,6 +596,25 @@ def main():
         except (RuntimeError, OSError) as error:
             fail(str(error))
         print(f"Sent {count} expiry reminder(s).")
+        return
+
+    if args.mode == "ask":
+        try:
+            prompt = build_ask(today, " ".join(args.question).strip())
+        except ValueError as error:
+            fail(str(error))
+        if args.dry_run:
+            print(prompt)
+            return
+        answer = shorten(clean_report(run_claude(prompt), "ask"), "ask")
+        if not posting:
+            print(answer)
+            return
+        try:
+            send_telegram(answer, token, chat_id)
+        except (RuntimeError, OSError) as error:
+            fail(str(error))
+        print(f"Posted the answer to Telegram ({len(answer)} characters).")
         return
 
     if args.mode == "monthly":

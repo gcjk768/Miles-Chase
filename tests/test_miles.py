@@ -266,6 +266,42 @@ class TelegramCommands(TempFiles):
         self.assertIn("KF: 13000 exp 2029-01", run_miles.MY_POINTS.read_text())
         self.assertEqual(telegram_bot.OFFSET.read_text(), "7")
 
+    def test_ask(self):
+        self.assertIsNone(self.handle("/ask Transfer CR now for Tokyo?"))
+        self.assertEqual(self.runs, [("ask", "Transfer CR now for Tokyo?")])
+        self.assertIn("Give a question", self.handle("/ask"))
+        self.assertIn("under 500", self.handle("/ask " + "x" * 501))
+        self.assertEqual(len(self.runs), 1)  # bad questions never become jobs
+        prompt = run_miles.build_ask(date(2026, 9, 30), "Transfer CR now?")
+        self.assertIn("Total: 65,200 miles", prompt)
+        self.assertTrue(prompt.rstrip().endswith("Transfer CR now?"))
+
+    def test_topic_chat_id(self):
+        self.assertEqual(run_miles.split_chat_id("-100123/2765"), ("-100123", 2765))
+        self.assertEqual(run_miles.split_chat_id(-100123), ("-100123", None))
+        sent = []
+        original = run_miles.telegram_api
+
+        def fake_api(token, method, payload, timeout=30):
+            if method == "getUpdates":
+                return [
+                    {"update_id": 1, "message": {"chat": {"id": -100}, "message_thread_id": 7,
+                                                 "text": "/goal"}},
+                    {"update_id": 2, "message": {"chat": {"id": -100}, "message_thread_id": 9,
+                                                 "text": "/goal"}},
+                    {"update_id": 3, "message": {"chat": {"id": -100}, "text": "/goal"}},
+                ]
+            sent.append(payload)
+            return {}
+
+        run_miles.telegram_api = fake_api
+        try:
+            telegram_bot.poll("token", "-100/7", lambda *a: None)
+        finally:
+            run_miles.telegram_api = original
+        self.assertEqual(len(sent), 1)  # only the command in topic 7 is answered
+        self.assertEqual((sent[0]["chat_id"], sent[0]["message_thread_id"]), ("-100", 7))
+
 
 class ExpiryReminders(TempFiles):
     LINES = ["CR: 52000 exp 2027-01", "KF: 12000 exp 2027-01", "CPM: 20000", "SCR: 0 exp 2027-01"]

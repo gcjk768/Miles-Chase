@@ -1,7 +1,14 @@
 services:
   miles:
     build: .
+    # Dockge Update/Start rebuilds from the code on disk instead of reusing the old image.
+    pull_policy: build
     container_name: miles-chase
+    # Runs as the NAS user (uid 1000 = "node" in the image, HOME /home/node) so files written
+    # to data/ and state/ stay editable from the host instead of being owned by root.
+    user: "1000:10"
+    environment:
+      TZ: Asia/Singapore
     restart: unless-stopped
     # A small init process as PID 1: it forwards stop signals and cleans up finished jobs,
     # and exits when the scheduler does, so the restart policy starts a fresh container.
