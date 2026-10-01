@@ -5,6 +5,7 @@ updated: 2026-10-01
 # Changelog
 
 ## 2026-10-01
+- feat: `/mileshelp` replaces `/help` in the menu. James Channel shows every bot's commands in one `/` menu (no per-topic scope in Telegram), so names must be unique across bots. `/help` still works.
 - feat: `/miles <question>` replaces `/ask` in the menu (James Channel shares one `/` menu across every bot (Telegram has no per-topic command scope), so three bots' `/ask` collided.) `/ask` still works. Group menu updated via setMyCommands (chat scope). [telegram_bot.py](../../telegram_bot.py)
 - feat: `/ask` answers use emoji (flags per country, ✈️ routes, 💺 cabins, ✅ / ❌ covered, 💡 tips) via `ASK_PROMPT` in `run_miles.py`.
 - fix: `/tickets` layout fits a phone: lines under 34 chars, fares in k (46k), ✅ / ❌17k instead of "→ left 54,000 / ❌ 17,000 short", one way Advantage (Eco/Biz), 🎯 Closest next as short bullets (`TICKETS_PROMPT` in `run_miles.py`).

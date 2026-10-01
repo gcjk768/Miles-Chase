@@ -13,7 +13,7 @@ Only messages in TELEGRAM_CHAT_ID (your private channel or chat with the bot) ar
     /goal clear                    remove the goal
     /run daily   /run monthly      run a report now (daily always posts in full)
     /miles Transfer CR now?        ask Claude (claude -p) with your balances as context (/ask works too)
-    /help                          list the commands
+    /mileshelp                     list the commands (/help works too)
 """
 
 import re
@@ -101,7 +101,7 @@ def handle(text, run_report):
             return f"{error} Example: /miles Should I transfer CR now for Tokyo?"
         run_report("ask", question)
         return None
-    if command in ("/help", "/start"):
+    if command in ("/mileshelp", "/help", "/start"):
         return HELP
     return None
 
