@@ -39,6 +39,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import vault
+
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 STATE = ROOT / "state"
@@ -88,6 +90,8 @@ QUIET_MODES = ("line", "silent", "off")
 SPLIT_MODES = ("sections", "off")
 SHORT_SECTION = 200  # sections up to this long share a message with neighbouring short ones
 GROUP_LIMIT = 900    # longest message made by grouping short sections
+MEMORY_HEADER = ("MEMORY (from the app's vault, newest first: what was already sent and learned. "
+                 "Don't repeat a tip or re-announce news listed here; say what changed instead)")
 USER_TEXT_LIMIT = 80  # longest route or goal accepted from Telegram
 ASK_LIMIT = 500       # longest /ask question
 
@@ -188,6 +192,25 @@ def set_balance(card, points, expiry=None):
     else:
         lines.append(f"{card}: {points}" + (f" exp {expiry}" if expiry else ""))
     write_lines(MY_POINTS, lines)
+    note = card_note(card, points, expiry, f"balance set to {points:,} via /points")
+    vault.log("💰", "Points updated", f"{card} {points:,}" + (f" exp {expiry}" if expiry else ""), note)
+
+
+def card_note(card, points, expiry, history):
+    """Update the card's vault note (balance, expiry, History); returns its wikilink or None."""
+    import reminders  # names live there; imported late since reminders imports this module
+    if card == "KF":
+        balance = f"{points:,} KrisFlyer miles"
+    else:
+        balance = f"{points:,} {UNITS[card]} = {card_miles(card, points):,} KrisFlyer miles"
+    return vault.entity("Cards", reminders.NAMES.get(card, card),
+                        f"**Balance:** {balance}\n**Expiry:** {expiry or 'none set'}", history)
+
+
+def memory_lines(folders=()):
+    """The vault memory block for a prompt, or nothing when the vault is off or empty."""
+    text = vault.memory(folders)
+    return [MEMORY_HEADER, text, ""] if text else []
 
 
 def check_user_text(text, what, limit=USER_TEXT_LIMIT):
@@ -322,6 +345,7 @@ def build_monthly(today):
         "HISTORY (previous months, oldest first, filled by the script)",
         *history,
         "",
+        *memory_lines(("Cards", "Deals")),
     ])
     return prompt, points
 
@@ -369,6 +393,7 @@ def build_daily(today):
         "YESTERDAY (filled by the script)",
         *yesterday,
         "",
+        *memory_lines(("Deals",)),
     ])
 
 
@@ -500,6 +525,7 @@ def build_ask(today, question, mode="ask"):
         "WATCHLIST",
         *watchlist_routes(),
         "",
+        *(memory_lines(("Cards",)) if mode == "ask" else []),
         "QUESTION",
         question,
     ])
@@ -899,6 +925,10 @@ def main():
             send_report(answer, token, chat_id, by_section, head)
         except (RuntimeError, OSError) as error:
             fail(str(error))
+        if args.mode == "tickets":
+            vault.log("🎟", "Tickets list sent", vault.gist(answer))
+        else:
+            vault.log("💬", "/miles answered", f"Q: {question} → A: {vault.gist(answer, 200)}")
         print(f"Posted the answer to Telegram ({len(answer)} characters).")
         return
 
@@ -919,10 +949,17 @@ def main():
         save_prices(prices, today)
     else:
         save_monthly_history(points, today)
+        if posting:
+            import reminders
+            expiries = {c: f"{last:%Y-%m}" for c, _, last in reminders.expiries(points)}
+            for c, balance in parse_balances(points).items():  # not `card`: that's the card() helper
+                card_note(c, balance, expiries.get(c), f"monthly snapshot {balance:,}")
 
     head = header(args.mode, f"{today:%d %b %Y}")
     if args.mode == "daily" and status == "QUIET" and quiet != "off" and not args.full:
         if quiet == "silent":
+            if posting:
+                vault.log("✈️", "Daily report: quiet day", "nothing posted")
             print("Quiet day: nothing posted.")
             return
         report = "no fare changes or deals today"
@@ -942,6 +979,8 @@ def main():
         count = len(messages)
     except (RuntimeError, OSError) as error:
         fail(str(error))
+    vault.log("📊" if args.mode == "monthly" else "✈️", f"{args.mode.capitalize()} report sent",
+              f"{status or 'NEWS'}: {vault.gist(report)}")
     print(f"Posted the {args.mode} report to Telegram ({len(report)} characters, "
           f"{count} message{'s' if count != 1 else ''}).")
 

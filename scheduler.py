@@ -31,6 +31,7 @@ from datetime import datetime, time as clock
 
 import run_miles
 import telegram_bot
+import vault
 
 DAILY_AT = clock(18, 0)
 MONTHLY_AT = clock(8, 7)
@@ -187,6 +188,7 @@ def run(mode, *options, attempt=1):
         log(f"{mode} done: {output.splitlines()[-1] if output else ''}")
         return
     log(f"{mode} failed (exit {code}):\n{output}")
+    vault.log("⚠️", f"{mode} failed", f"exit {code}, try {attempt}")
     tail = "\n".join(output.splitlines()[-6:])
 
     if SIGN_IN.search(output) and not TRANSIENT.search(output):
@@ -231,6 +233,7 @@ def run(mode, *options, attempt=1):
     if code != 0:
         tail += "\n\nAfter repair:\n" + "\n".join(retry_output.splitlines()[-4:])
     log(f"{mode} after repair: exit {code}")
+    vault.log("🔧", "Self-repair", f"{mode}: {summary} → {'fixed' if code == 0 else 'still failing'}")
     telegram(failure(mode, "Failed.", f"🔧 <b>Self-repair by Claude</b>\n{run_miles.esc(summary)}",
                      outcome, log_text=tail))
 
