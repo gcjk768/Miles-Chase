@@ -12,7 +12,7 @@ Only messages in TELEGRAM_CHAT_ID (your private channel or chat with the bot) ar
     /goal Tokyo business, 2 pax, Mar 2027   set the goal
     /goal clear                    remove the goal
     /run daily   /run monthly      run a report now (daily always posts in full)
-    /ask Transfer CR now?          ask Claude (claude -p) with your balances as context
+    /miles Transfer CR now?        ask Claude (claude -p) with your balances as context (/ask works too)
     /help                          list the commands
 """
 
@@ -36,7 +36,7 @@ HELP = (
     "/goal clear: remove the goal\n"
     "/run daily or /run monthly: run a report now\n"
     "/tickets: Business and Economy tickets your miles can book now\n"
-    "/ask <question>: ask Claude, using your balances (takes a minute or two)"
+    "/miles <question>: ask Claude, using your balances (takes a minute or two)"
 )
 
 
@@ -93,12 +93,12 @@ def handle(text, run_report):
     if command == "/tickets":
         run_report("tickets")
         return None
-    if command == "/ask":
+    if command in ("/miles", "/ask"):  # /miles is unique in the shared group menu
         question = " ".join(words[1:])
         try:
             run_miles.check_user_text(question, "question", limit=run_miles.ASK_LIMIT)
         except ValueError as error:
-            return f"{error} Example: /ask Should I transfer CR now for Tokyo?"
+            return f"{error} Example: /miles Should I transfer CR now for Tokyo?"
         run_report("ask", question)
         return None
     if command in ("/help", "/start"):
