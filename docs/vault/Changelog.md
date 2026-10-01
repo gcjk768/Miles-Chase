@@ -5,6 +5,7 @@ updated: 2026-10-01
 # Changelog
 
 ## 2026-10-01
+- feat: `/ask` answers use emoji (flags per country, ✈️ routes, 💺 cabins, ✅ / ❌ covered, 💡 tips) via `ASK_PROMPT` in `run_miles.py`.
 - fix: `/tickets` layout fits a phone: lines under 34 chars, fares in k (46k), ✅ / ❌17k instead of "→ left 54,000 / ❌ 17,000 short", one way Advantage (Eco/Biz), 🎯 Closest next as short bullets (`TICKETS_PROMPT` in `run_miles.py`).
 - fix: KF line in the `data/my_points.txt` template no longer asks for an expiry (`exp [YYYY-MM]`), since KrisFlyer has no single expiry to look up; the leftover placeholder was blocking the monthly report.
 
