@@ -4,4 +4,4 @@
 set -e
 NAS="${NAS:-James Koh@192.168.1.27}"
 DIR=/volume1/docker/miles-chase
-git archive HEAD | ssh "$NAS" "mkdir -p $DIR && cd $DIR && tar xf - \$(test -d data && echo --exclude=data) && docker compose up -d --build"
+git archive HEAD | ssh "$NAS" "mkdir -p $DIR && cd $DIR && tar xf - \$(test -d data && echo --exclude=data) && docker compose up -d --build --force-recreate"  # code is bind-mounted: recreate so a code-only change is picked up
