@@ -417,54 +417,59 @@ TICKETS_PROMPT = f"""List the KrisFlyer Saver award tickets from Singapore the u
 Count only miles they can actually move: KrisFlyer miles, plus card points in whole transfer blocks
 at or above each bank's minimum (check it; Citi and Standard Chartered use blocks). Look up current
 Saver prices (the 2026 chart); take your time and use up to 15 web searches. Follow this layout
-exactly: plain text, no markdown, no tables, numbers with commas, a blank line between blocks.
-Start directly with the 💰 line: no introduction before it.
+exactly: plain text, no markdown, no tables, a blank line between blocks. It is read on a phone:
+keep every line under 34 characters so nothing wraps. Fare prices use k (46k, 84.5k); the 💰
+block uses full numbers with commas. Start directly with the 💰 line: no introduction before it.
 
 💰 ESTIMATED MILES
 Total if everything converted: 107,959
 ✅ Usable now: 100,000 (CR 250,000 points in 10 blocks)
 ⏳ Not yet: SCR 13,651 points (below the 25,000 minimum), CPM 4,983 (below the minimum)
 (Numbers above are an example. Work them out from the data: the total is the script's figure,
-usable counts only whole transfer blocks at or above each bank's minimum. Every "left" and
+usable counts only whole transfer blocks at or above each bank's minimum. Every ✅ and
 "short" below uses the usable figure.)
 
-Saver prices · one way / return · miles left after
+Saver miles: one way · return
+✅ can book · ❌17k = 17k short
 
 🇯🇵 JAPAN
 
 Tokyo, Osaka, Nagoya, Fukuoka
-🛫 Direct SIA, about 6h 30m to 7h 30m; Tokyo several flights a day
-🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
-✨ Premium Economy 38,000 / 76,000 → left 62,000 / 24,000
-💼 Business 54,500 / 109,000 → left 45,500 / ❌ 9,000 short
-👑 First 80,000 / 160,000 → ❌ 60,000 short (Tokyo only)
-💵 Taxes about S$70 one way / S$140 return
-📈 Advantage if Saver is gone: Economy 38,000, Business 85,000 one way
+🛫 SIA direct · ~7h · daily
+🪑 Eco 25.5k ✅ · 51k ✅
+✨ PE 38k ✅ · 76k ✅
+💼 Biz 54.5k ✅ · 109k ❌9k
+👑 First 80k ❌60k (Tokyo)
+💵 Tax ~S$70 one way
+📈 Advantage: Eco 38k · Biz 85k
 
 Sapporo, Okinawa (Scoot)
-🛫 Direct Scoot, about 7h; Sapporo seasonal
-🪑 Economy 25,500 / 51,000 → left 74,500 / 49,000
-💵 Taxes about S$60 one way
+🛫 Scoot direct · ~7h
+🪑 Eco 25.5k ✅ · 51k ✅
+💵 Tax ~S$60 one way
 
 (One section per region, in EXACTLY this order, China first, headed by its flag and name in
 capitals:
 {chr(10).join(f"{region}: {cities}" for region, cities in TICKET_DESTINATIONS.items())}
 Within a region, put cities that cost the same miles in one block, cheapest block first. Each
-block has the city names, then these lines as in the example: 🛫 direct or via where, flight
-time and how often; one line per cabin actually sold on the route (Economy, Premium Economy,
+block has the city names, then these short lines as in the example: 🛫 direct or via where,
+flight time and how often; one line per cabin actually sold on the route (Economy, Premium Economy,
 Business, First, in that order) so the cabins compare side by side; 💵 estimated taxes; and
-📈 Advantage prices for when Saver is sold out. Always give the 🛫 and 💵 lines: flight times,
+📈 one way Advantage prices (Eco and Biz only) for when Saver is sold out. Always give the 🛫 and 💵 lines: flight times,
 direct or via, and typical taxes are well known, so give them as "about" figures from what you
 know. For award prices, use what you found and say "about" or "unconfirmed" when unsure; leave
-out only a price you have no basis for. The numbers in the example are placeholders. When the user can't afford a fare, write "❌ N short" with the exact miles missing,
-never just "not enough". Scoot-only cities keep "(Scoot)" and get the Economy line only, since
+out only a price you have no basis for. The numbers in the example are placeholders. When the user can't afford a fare, write ❌ plus the miles missing (❌9k),
+never just "not enough"; if both one way and return are out of reach, give only the one way
+shortfall to keep the line short. Scoot-only cities keep "(Scoot)" and get the Economy line only, since
 Scoot has no business class. Leave out any city with no KrisFlyer award.)
 
-🎯 Closest next: Tokyo business return, 9,000 short
+🎯 Closest next
+• Tokyo Biz return · 9k short
+• (at most 2 more, same short form)
 
 💡 Before you book
-• Check a seat on singaporeair.com first, then transfer (transfers can't be undone)
-• (at most 2 more short tips, e.g. taxes, transfer time)
+• Find the seat first, then transfer
+• (at most 2 more tips, one short line each)
 
 🔗 Book: {BOOK_URL} → Book Trip → Redeem flights
 📚 Prices: (one source link)"""
