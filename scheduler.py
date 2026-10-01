@@ -129,6 +129,12 @@ def telegram(text):
         log(f"couldn't post to Telegram: {error}")
 
 
+def failure(mode, headline, *blocks, log_text=""):
+    """A failure alert as an HTML card; the job's last log lines go in the expandable quote."""
+    return run_miles.card("error", mode, f"❌ {run_miles.esc(headline)}", *blocks,
+                          run_miles.background("Log", log_text) if log_text else "")
+
+
 def report_once_an_hour(problem, text):
     if time.time() - last_reported.get(problem, 0) >= ERROR_REPORT_EVERY_SECONDS:
         last_reported[problem] = time.time()
@@ -184,14 +190,15 @@ def run(mode, *options, attempt=1):
     tail = "\n".join(output.splitlines()[-6:])
 
     if SIGN_IN.search(output) and not TRANSIENT.search(output):
-        report_once_an_hour(f"sign-in {mode}", (
-            f"⚠️ Miles {mode} failed: Claude sign-in problem.\n{tail}\n\n"
-            "Run `claude setup-token` on your computer, put the new token in .env on the NAS "
-            "as CLAUDE_CODE_OAUTH_TOKEN, then restart the container."))
+        report_once_an_hour(f"sign-in {mode}", failure(
+            mode, "Claude sign-in problem.",
+            "🔑 Run <code>claude setup-token</code> on your computer, put the new token in "
+            "<code>.env</code> on the NAS as <code>CLAUDE_CODE_OAUTH_TOKEN</code>, "
+            "then restart the container.", log_text=tail))
         return
 
     if mode in ("ask", "tickets"):  # on demand: no retries or self-repair, just say it failed
-        telegram(f"⚠️ /{mode} failed:\n{tail}\n\nTry again in a few minutes.")
+        telegram(failure(mode, f"/{mode} failed.", "<i>Try again in a few minutes.</i>", log_text=tail))
         return
 
     if TRANSIENT.search(output) or code == -1:
@@ -200,14 +207,14 @@ def run(mode, *options, attempt=1):
             log(f"{mode}: temporary problem, retrying in {RETRY_AFTER_SECONDS // 60} minutes")
             return
         retries.pop(mode, None)
-        telegram(f"⚠️ Miles {mode} failed {attempt} times with a temporary problem:\n{tail}\n\n"
-                 "It will run again at its next scheduled time.")
+        telegram(failure(mode, f"Failed {attempt} times with a temporary problem.",
+                         "<i>It will run again at its next scheduled time.</i>", log_text=tail))
         return
 
     retries.pop(mode, None)
     today = datetime.now(run_miles.SGT).date()
     if env("SELF_REPAIR", "on") == "off" or repaired_today.get(mode) == today:
-        report_once_an_hour(f"failed {mode}", f"⚠️ Miles {mode} failed.\n{tail}")
+        report_once_an_hour(f"failed {mode}", failure(mode, "Failed.", log_text=tail))
         return
 
     repaired_today[mode] = today
@@ -216,13 +223,16 @@ def run(mode, *options, attempt=1):
     try:
         summary = repair.repair(mode, output)
     except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
-        telegram(f"⚠️ Miles {mode} failed.\n{tail}\n\n🔧 Self-repair couldn't run: {error}")
+        telegram(failure(mode, "Failed.", f"🔧 Self-repair couldn't run: {run_miles.esc(error)}",
+                         log_text=tail))
         return
     code, retry_output = run_job(mode, *options)
-    outcome = ("✅ Re-ran it and it worked." if code == 0
-               else "❌ Re-ran it and it still fails:\n" + "\n".join(retry_output.splitlines()[-4:]))
+    outcome = "✅ Re-ran it and it worked." if code == 0 else "❌ Re-ran it and it still fails."
+    if code != 0:
+        tail += "\n\nAfter repair:\n" + "\n".join(retry_output.splitlines()[-4:])
     log(f"{mode} after repair: exit {code}")
-    telegram(f"⚠️ Miles {mode} failed.\n{tail}\n\n🔧 Self-repair by Claude:\n{summary}\n\n{outcome}")
+    telegram(failure(mode, "Failed.", f"🔧 <b>Self-repair by Claude</b>\n{run_miles.esc(summary)}",
+                     outcome, log_text=tail))
 
 
 def due_retries():
@@ -267,7 +277,8 @@ def main():
         except Exception as error:  # keep going whatever happens; report it
             log("scheduler error:\n" + traceback.format_exc())
             report_once_an_hour(f"scheduler {type(error).__name__}",
-                                f"⚠️ Miles scheduler hit an error and carried on: {error}")
+                                failure("scheduler", "Hit an error and carried on.",
+                                        log_text=str(error)))
             time.sleep(CHECK_EVERY_SECONDS)
 
 

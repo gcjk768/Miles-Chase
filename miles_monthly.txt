@@ -48,7 +48,7 @@ BREVITY
 The whole report must fit in one Telegram message. Use at most 4 short lines per section (section 4: one line per region). If a section has nothing new or only unverified information, give it one line or skip it. Say each result once, as a final statement. Never show your working or question yourself in the text.
 
 FORMAT
-Plain text for Telegram. No markdown tables, no asterisks, no # headings. Use short lines with emoji section headers. Write numbers with commas (54,500) and money in S$. Keep it under 3,500 characters. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
+Plain text for Telegram. No markdown tables, no asterisks, no # headings. Use short lines with emoji section headers. No title line: the script adds the header. Leave a blank line between blocks and start each block with an emoji and a short title on its own line. Give links as bare URLs: the script turns them into short links. Write numbers with commas (54,500) and money in S$. Keep it under 3,500 characters. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
 
 SELF CHECK BEFORE PRINTING
 Recheck every conversion, total, gap, percentage and cents per mile figure. Confirm every date is calculated from TODAY. Count the characters and confirm the output is under 3,500, contains no account numbers and uses no dashes as connectors. Fix any issue, then print.

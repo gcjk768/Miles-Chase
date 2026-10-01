@@ -162,6 +162,98 @@ class ReportCleaning(unittest.TestCase):
         self.assertEqual("".join(pieces).replace("\n", ""), text.replace("\n", ""))
 
 
+class TelegramHtml(unittest.TestCase):
+    TAG = r"<(/?)(\w+)[^>]*>"
+
+    def assert_balanced(self, piece):
+        import re
+        stack = []
+        for closing, name in re.findall(self.TAG, piece):
+            if closing:
+                self.assertEqual(stack.pop(), name, piece[:200])
+            else:
+                stack.append(name)
+        self.assertEqual(stack, [], piece[-200:])
+        self.assertNotRegex(piece, r"<[^>]*$|^[^<]*>")  # no tag cut in half
+
+    def test_escapes_dynamic_text_including_llm_output(self):
+        html = run_miles.llm_html("Tip: 2 < 3 & <b>x</b> > 1")
+        self.assertEqual(html, "Tip: 2 &lt; 3 &amp; &lt;b&gt;x&lt;/b&gt; &gt; 1")
+        self.assertIn("&lt;script&gt;", run_miles.header("ask", "<script>"))
+        self.assertIn("A &amp; B", run_miles.card("note", "", run_miles.esc("A & B")))
+
+    def test_llm_markdown_and_links(self):
+        html = run_miles.llm_html("🇯🇵 JAPAN\n- **Tokyo** 54.5k\nSee [MileLion](https://milelion.com/a?b=1&c=2) "
+                                  "or https://www.singaporeair.com/en_UK/sg/home.\n\n📚 Sources\nhttps://x.com/1")
+        self.assertIn("🇯🇵 <b>JAPAN</b>", html)
+        self.assertIn("• <b>Tokyo</b> 54.5k", html)
+        self.assertIn('<a href="https://milelion.com/a?b=1&amp;c=2">MileLion</a>', html)
+        self.assertIn('<a href="https://www.singaporeair.com/en_UK/sg/home">singaporeair.com</a>.', html)
+        self.assertTrue(html.endswith('<a href="https://x.com/1">x.com</a></blockquote>'))
+        self.assertIn(run_miles.DIVIDER + "\n<blockquote expandable>📚 <b>Sources</b>", html)
+        self.assert_balanced(html)
+
+    def test_chunks_split_between_blocks_never_inside_a_tag(self):
+        block = "🎟 <b>Tokyo &amp; Osaka</b> · " + "x" * 60 + '\n🔗 <a href="https://a/b?c=1&amp;d=2">Book</a>'
+        quote = ("<blockquote expandable>" + "\n".join("log line %d &lt;x&gt;" % i for i in range(400))
+                 + "</blockquote>")
+        text = "\n\n".join([block] * 60) + "\n\n" + quote
+        pieces = run_miles.html_chunks(text)
+        self.assertGreater(len(pieces), 2)
+        for piece in pieces:
+            self.assertLessEqual(len(piece), run_miles.TELEGRAM_LIMIT)
+            self.assert_balanced(piece)
+            self.assertNotRegex(piece, r"&\w*$")  # no entity cut in half
+        self.assertTrue(pieces[0].endswith("</a>"))  # cut at a block boundary
+        # Nothing lost: same text once the reopened tags are taken out.
+        def plain(t):
+            return run_miles.html_to_plain(t).replace("\n", "")
+        self.assertEqual("".join(plain(p) for p in pieces), plain(text))
+
+    def test_parse_error_falls_back_to_plain_text(self):
+        sent = []
+        original = run_miles.telegram_api
+
+        def fake_api(token, method, payload, timeout=30):
+            sent.append(payload)
+            if payload.get("parse_mode"):
+                raise RuntimeError('Telegram sendMessage failed: {"ok":false,"error_code":400,'
+                                   '"description":"Bad Request: can\'t parse entities"}')
+            return {}
+
+        run_miles.telegram_api = fake_api
+        try:
+            run_miles.send_telegram('⏰ <b>A &amp; B</b>\n<a href="https://x/y">Book</a>', "t", "-100/7")
+        finally:
+            run_miles.telegram_api = original
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[0]["parse_mode"], "HTML")
+        self.assertTrue(sent[0]["disable_web_page_preview"])
+        self.assertNotIn("parse_mode", sent[1])
+        self.assertEqual(sent[1]["text"], "⏰ A & B\nBook: https://x/y")
+        self.assertEqual(sent[1]["message_thread_id"], 7)
+
+    def test_other_telegram_errors_are_not_swallowed(self):
+        original = run_miles.telegram_api
+
+        def fake_api(token, method, payload, timeout=30):
+            raise RuntimeError("Telegram sendMessage failed: chat not found")
+
+        run_miles.telegram_api = fake_api
+        try:
+            with self.assertRaises(RuntimeError):
+                run_miles.send_telegram("hi", "t", "c")
+        finally:
+            run_miles.telegram_api = original
+
+    def test_report_header_on_first_message_only(self):
+        messages = run_miles.report_html("A\n" + "y" * 300 + "\n\nB\n" + "z" * 300, True,
+                                         run_miles.header("daily", "01 Oct 2026"))
+        self.assertEqual(len(messages), 2)
+        self.assertTrue(messages[0].startswith("✈️ <b>MILES DAILY</b> · 01 Oct 2026\n\n<b>A</b>"))
+        self.assertNotIn("MILES DAILY", messages[1])
+
+
 class DataFiles(TempFiles):
     def test_set_balance_keeps_expiry_and_comments(self):
         run_miles.set_balance("cr", 60000)
@@ -213,14 +305,14 @@ class TelegramCommands(TempFiles):
         self.assertIn("SCR end Jul 2027", reply)
         self.assertIn("SCR: 31000 exp 2027-07", run_miles.MY_POINTS.read_text())
         self.assertEqual(reply.count("31,000"), 1)  # balances aren't listed twice
-        self.assertTrue(self.handle("/points CR abc").startswith("Use /points"))
+        self.assertIn("Use /points", self.handle("/points CR abc"))
         self.assertIn("unknown card", self.handle("/points XX 5"))
 
     def test_watch(self):
-        self.assertIn("1. SIN Tokyo, Mar 2027", self.handle("/watch"))
-        self.assertIn("3. SIN Bali, Jun 2027", self.handle("/watch add SIN Bali, Jun 2027"))
+        self.assertIn("<b>1</b> · SIN Tokyo, Mar 2027", self.handle("/watch"))
+        self.assertIn("<b>3</b> · SIN Bali, Jun 2027", self.handle("/watch add SIN Bali, Jun 2027"))
         self.assertIn("already on the watchlist", self.handle("/watch add sin bali, jun 2027"))
-        self.assertIn("Removed SIN London, flexible", self.handle("/watch remove 2"))
+        self.assertIn("removed SIN London, flexible", self.handle("/watch remove 2"))
         self.assertEqual(run_miles.watchlist_routes(), ["SIN Tokyo, Mar 2027", "SIN Bali, Jun 2027"])
         self.assertIn("# Routes", run_miles.WATCHLIST.read_text())
         self.assertIn("Pick a number", self.handle("/watch remove 9"))
@@ -235,14 +327,14 @@ class TelegramCommands(TempFiles):
         self.handle("/goal Seoul economy")
         self.assertEqual(run_miles.MY_POINTS.read_text().count("Goal:"), 2)  # new one + comment
         self.assertEqual(run_miles.get_goal(), "Seoul economy")
-        self.assertEqual(self.handle("/goal clear"), "Goal removed.")
+        self.assertIn("GOAL</b> · removed", self.handle("/goal clear"))
         self.assertIsNone(run_miles.get_goal())
 
     def test_run_and_other_messages(self):
         self.assertIsNone(self.handle("/run daily"))
         self.assertIsNone(self.handle("/run@MilesBot monthly"))
         self.assertEqual(self.runs, [("daily", "--full"), ("monthly",)])
-        self.assertTrue(self.handle("/run weekly").startswith("Use /run"))
+        self.assertIn("Use /run", self.handle("/run weekly"))
         self.assertIsNone(self.handle("hello"))
         self.assertIn("/watch", self.handle("/help"))
 
@@ -479,7 +571,8 @@ class JobFailures(TempFiles):
         scheduler.last_reported.clear()
         scheduler.run("daily")
         self.assertEqual(self.repairs, ["daily"])
-        self.assertEqual(self.sent[-1], "⚠️ Miles daily failed.\nerror: something else")
+        self.assertIn("❌ Failed.", self.sent[-1])
+        self.assertIn("error: something else</blockquote>", self.sent[-1])
 
     def test_self_repair_can_be_switched_off(self):
         import os
@@ -564,7 +657,7 @@ class NewsAlerts(TempFiles):
                                       ("Pick ETFs, not stocks", "https://y/3", "")] + self.FEED_A
         self.assertEqual(self.check()[0], 2)
         self.assertEqual(len(self.sent), 1)  # no blog posts, so only the video message
-        self.assertTrue(self.sent[0].startswith("🎥 New miles videos"))
+        self.assertTrue(self.sent[0].startswith("🎥 <b>MILES VIDEOS</b> · 2 new"))
         self.assertIn("https://y/1", self.sent[0])  # miles channel: every video
         self.assertIn("https://y/2", self.sent[0])  # mixed channel: only miles videos
         self.assertNotIn("ETFs", self.sent[0])

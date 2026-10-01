@@ -44,7 +44,7 @@ STATUS
 The very first line must be exactly "STATUS: NEWS" or "STATUS: QUIET". Use NEWS if there is any alert or region update, if any cash fare changed vs YESTERDAY, or if a fare was found and YESTERDAY is empty. Otherwise use QUIET. The script removes this line before posting.
 
 FORMAT
-Plain text for Telegram. No markdown tables, no asterisks, no # headings. One short block per route with emoji markers. Money in S$ with commas. Keep it under 3,500 characters. Say each result once, as a final statement. Never show your working or question yourself in the text. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
+Plain text for Telegram. No markdown tables, no asterisks, no # headings. One short block per route with emoji markers. No title line: the script adds the header. Leave a blank line between blocks and start each block with an emoji and a short title on its own line. Give links as bare URLs: the script turns them into short links. Money in S$ with commas. Keep it under 3,500 characters. Say each result once, as a final statement. Never show your working or question yourself in the text. Never use dashes as connectors in sentences. Use commas, colons or full stops instead.
 The very last line must be today's prices in this exact format, for the script to save:
 PRICES [YYYY-MM-DD] | [route] Y [price or NA] J [price or NA] | [route] Y [price or NA] J [price or NA]
 

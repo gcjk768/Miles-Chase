@@ -27,6 +27,7 @@ Environment (or a .env file next to this script, see .env.example):
 """
 
 import argparse
+import html
 import json
 import os
 import re
@@ -374,6 +375,7 @@ def build_daily(today):
 ASK_PROMPT = """You are a KrisFlyer miles coach for a Singapore-based user. Answer their question
 using their data below and, when it needs current facts (award space, transfer bonuses, card
 promos, fees), a quick web search. Plain text for Telegram, no markdown, under {limit} characters.
+No title line (the script adds one); a blank line between paragraphs; links as bare URLs.
 Make it easy to scan with emoji: a flag before each country or region, ✈️ for flights and routes,
 💺 for Business and Economy lines, ✅ / ❌ for whether their miles cover it, 💡 for tips.
 Say which numbers are from their data and which you looked up; link the sources you used. If you
@@ -658,25 +660,175 @@ def send_typing(token, chat_id):
 
 
 def send_telegram(text, token, chat_id, silent=False):
+    """Post Telegram HTML (built with card() / llm_html()). The one send path for every message.
+
+    Splits at TELEGRAM_LIMIT between blocks, never inside a tag. If Telegram rejects the HTML,
+    the piece is resent as plain text so nothing is lost.
+    """
     chat, topic = split_chat_id(chat_id)
-    for i, piece in enumerate(chunks(text)):
+    for i, piece in enumerate(html_chunks(text)):
         payload = {
             "chat_id": chat,
             "text": piece,
+            "parse_mode": "HTML",
             "disable_web_page_preview": True,
             "disable_notification": silent or i > 0,
         }
         if topic:
             payload["message_thread_id"] = topic
-        telegram_api(token, "sendMessage", payload)
+        try:
+            telegram_api(token, "sendMessage", payload)
+        except RuntimeError as error:
+            if "can't parse entities" not in str(error):
+                raise
+            plain_payload = {k: v for k, v in payload.items() if k != "parse_mode"}
+            for plain in chunks(html_to_plain(piece)):
+                telegram_api(token, "sendMessage", {**plain_payload, "text": plain})
 
 
-def send_report(report, token, chat_id, split):
-    """Post a report, one message per section when split; only the first one notifies."""
-    messages = sections(report) if split else [report]
+def send_report(report, token, chat_id, split, head=""):
+    """Post a plain-text Claude report, one message per section when split; only the first notifies."""
+    messages = report_html(report, split, head)
     for i, message in enumerate(messages):
         send_telegram(message, token, chat_id, silent=i > 0)
     return len(messages)
+
+
+# ---- Telegram HTML cards (James's Telegram message style) ----
+DIVIDER = "━━━━━━━━━━━━━━━━"
+# One fixed emoji + title per message type.
+SECTION_TITLES = {
+    "daily": "✈️ MILES DAILY", "monthly": "📊 MILES MONTHLY", "tickets": "🎟 AWARD TICKETS",
+    "ask": "💬 MILES ANSWER", "news": "🆕 MILES NEWS", "videos": "🎥 MILES VIDEOS",
+    "reminder": "⏰ EXPIRY REMINDER", "error": "⚠️ MILES ERROR", "points": "💰 BALANCES",
+    "watch": "🗺 WATCHLIST", "goal": "🎯 GOAL", "help": "🧭 MILES CHASE", "note": "ℹ️ MILES CHASE",
+}
+MD_LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
+LINK_OR_URL = re.compile(rf"{MD_LINK.pattern}|{URL.pattern}")
+BACKGROUND_BLOCK = re.compile(r"^\W*(sources?|baseline)\b|^📚", re.IGNORECASE)
+TITLE_MAX = 48  # a block's first line up to this long (no URL, no full stop) is shown bold
+HTML_TOKEN = re.compile(r"<[^>]*>|&#?\w+;|\n\n|.", re.DOTALL)
+TAG_RESERVE = 300  # room for the tags closed/reopened around a split
+
+
+def esc(text):
+    return html.escape(str(text), quote=False)  # Telegram needs only < > & escaped in text
+
+
+def link(url, label=None):
+    """<a> with a short label (the site's name) instead of a long raw URL."""
+    if label is None:
+        label = re.sub(r"^www\.", "", url.split("://", 1)[-1].split("/", 1)[0])
+    return f'<a href="{html.escape(url, quote=True)}">{esc(label)}</a>'
+
+
+def header(kind, subtitle=""):
+    emoji, title = SECTION_TITLES[kind].split(" ", 1)
+    return f"{emoji} <b>{title}</b>" + (f" · {esc(subtitle)}" if subtitle else "")
+
+
+def background(title, text):
+    """Secondary detail for the end of a message: divider + expandable quote."""
+    return f"{DIVIDER}\n<blockquote expandable>⚙️ <b>{esc(title)}</b>\n{esc(text)}</blockquote>"
+
+
+def card(kind, subtitle, *blocks):
+    """Header line, then the (already HTML) blocks, a blank line apart."""
+    return "\n\n".join([header(kind, subtitle), *(b for b in blocks if b)])
+
+
+def line_html(line):
+    """One line of plain (or slightly markdown) text as safe HTML: escaped, links shortened."""
+    line = re.sub(r"^(\s*)[-*]\s+", r"\1• ", line)
+    out, last = [], 0
+    for match in LINK_OR_URL.finditer(line):
+        out.append(esc(line[last:match.start()]))
+        if match.group(1):  # [label](url)
+            out.append(link(match.group(2), match.group(1)))
+            last = match.end()
+        else:
+            url = match.group().rstrip(".,;:!?)")
+            out.append(link(url))
+            last = match.start() + len(url)
+    out.append(esc(line[last:]))
+    return re.sub(r"\*\*([^*<>]+?)\*\*", r"<b>\1</b>", "".join(out))
+
+
+def llm_html(text):
+    """Claude's plain-text answer as Telegram HTML. Everything is escaped first, so only tags
+    made here reach Telegram. A block's short first line is bold; Sources/Baseline blocks go
+    into an expandable quote at the end."""
+    blocks, extra = [], []
+    for block in re.split(r"\n\s*\n", text.strip()):
+        raw = block.strip().splitlines()
+        if not raw:
+            continue
+        lines = [line_html(l) for l in raw]
+        first = raw[0].strip()
+        caps = first == first.upper() and any(c.isalpha() for c in first)  # e.g. "🇯🇵 JAPAN"
+        if ((len(raw) > 1 or caps) and len(first) <= TITLE_MAX and not URL.search(first)
+                and not first.endswith((".", "!", "?"))):
+            lead, rest = re.match(r"([^\w\s&<(\[]+\s+)?(.*)", lines[0]).groups()
+            lines[0] = f"{lead or ''}<b>{re.sub(r'</?b>', '', rest)}</b>"
+        (extra if BACKGROUND_BLOCK.search(first) else blocks).append("\n".join(lines))
+    if extra:
+        blocks.append(f"{DIVIDER}\n<blockquote expandable>" + "\n\n".join(extra) + "</blockquote>")
+    return "\n\n".join(blocks)
+
+
+def report_html(report, split, head=""):
+    """A Claude report as HTML messages (one per section when split), header card on the first."""
+    messages = [llm_html(m) for m in (sections(report) if split else [report])]
+    if head:
+        messages[0] = f"{head}\n\n{messages[0]}"
+    return messages
+
+
+def html_to_plain(text):
+    """Telegram HTML back to plain text for the parse-error fallback; links keep their URL."""
+    text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2: \1", text, flags=re.DOTALL)
+    return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+
+def tag_name(tag):
+    return re.match(r"<(\w[\w-]*)", tag).group(1)
+
+
+def html_chunks(text, limit=TELEGRAM_LIMIT):
+    """Split HTML into pieces of at most `limit`, never inside a tag or an entity.
+
+    Prefers a blank line outside any tag, then a line break, then a space. A cut inside
+    <b>/<blockquote>/<a> closes those tags and reopens them in the next piece.
+    """
+    pieces = []
+    while len(text) > limit:
+        stack, best, pos = [], None, 0
+        for token in HTML_TOKEN.findall(text):
+            pos += len(token)
+            if pos > limit - TAG_RESERVE:
+                break
+            if token.startswith("</"):
+                if stack:
+                    stack.pop()
+            elif token.startswith("<") and len(token) > 1:
+                stack.append(token)
+            else:
+                kind = {"\n\n": 3, "\n": 2, " ": 1}.get(token, 0)
+                # A nice break in the first half would make a tiny piece: rank it lowest.
+                rank = kind * 2 + (not stack) if pos >= (limit - TAG_RESERVE) // 2 else -1
+                if best is None or rank >= best[0]:
+                    best = (rank, pos, list(stack))
+        if best is None:  # only tags before the limit: not produced by this app
+            best = (0, limit - TAG_RESERVE, [])
+        _, cut, open_tags = best
+        closing = "".join(f"</{tag_name(t)}>" for t in reversed(open_tags))
+        piece = text[:cut].rstrip() + closing
+        if piece.strip():
+            pieces.append(piece)
+        text = "".join(open_tags) + text[cut:].lstrip("\n ")
+    if text.strip():
+        pieces.append(text)
+    return pieces
 
 
 def main():
@@ -735,12 +887,16 @@ def main():
             print(prompt)
             return
         answer = shorten(clean_report(run_claude(prompt), args.mode), args.mode)
+        question = " ".join(args.question).strip()
+        head = header(args.mode, f"{today:%d %b %Y}" if args.mode == "tickets"
+                      else question if len(question) <= 40 else question[:39] + "…")
+        # The ticket list is laid out in blocks, so it posts one message per section.
+        by_section = args.mode == "tickets" and split == "sections"
         if not posting:
-            print(answer)
+            print("\n\n────────── next message ──────────\n\n".join(report_html(answer, by_section, head)))
             return
         try:
-            # The ticket list is laid out in blocks, so it posts one message per section.
-            send_report(answer, token, chat_id, args.mode == "tickets" and split == "sections")
+            send_report(answer, token, chat_id, by_section, head)
         except (RuntimeError, OSError) as error:
             fail(str(error))
         print(f"Posted the answer to Telegram ({len(answer)} characters).")
@@ -764,23 +920,26 @@ def main():
     else:
         save_monthly_history(points, today)
 
+    head = header(args.mode, f"{today:%d %b %Y}")
     if args.mode == "daily" and status == "QUIET" and quiet != "off" and not args.full:
         if quiet == "silent":
             print("Quiet day: nothing posted.")
             return
-        report = (f"✈️ {today:%d %b}: no fare changes or deals on your watchlist today. "
-                  "Send /run daily for the full report.")
+        report = "no fare changes or deals today"
+        messages = [card("daily", f"{today:%d %b %Y}",
+                         "⚪ No fare changes or deals on your watchlist today.\n"
+                         "<i>Send /run daily for the full report.</i>")]
     else:
         report = shorten(report, args.mode)
+        messages = report_html(report, split == "sections", head)
 
     if not posting:
-        if split == "sections":
-            print("\n\n────────── next message ──────────\n\n".join(sections(report)))
-        else:
-            print(report)
+        print("\n\n────────── next message ──────────\n\n".join(messages))
         return
     try:
-        count = send_report(report, token, chat_id, split == "sections")
+        for i, message in enumerate(messages):
+            send_telegram(message, token, chat_id, silent=i > 0)
+        count = len(messages)
     except (RuntimeError, OSError) as error:
         fail(str(error))
     print(f"Posted the {args.mode} report to Telegram ({len(report)} characters, "

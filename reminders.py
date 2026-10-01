@@ -63,17 +63,19 @@ def due(today, lines, sent):
 
 
 def message(card, points, expires, days):
-    when = f"{expires:%b %Y}, in {days} day{'s' if days != 1 else ''}"
+    """The reminder as a Telegram HTML card."""
+    left = f"{days} day{'s' if days != 1 else ''} left"
+    lines = [f"💳 <b>{NAMES[card]}</b> · expires end {expires:%b %Y}"]
     if card == "KF":
-        text = f"⏰ {NAMES[card]}: {points:,} miles expire at the end of {when}."
+        lines.append(f"💰 {points:,} miles expire")
     else:
         miles = run_miles.card_miles(card, points)
         fee = run_miles.transfer_fee(card, points)
         about = "about " if card in run_miles.APPROX_FEES else ""
-        text = (f"⏰ {NAMES[card]}: {points:,} {run_miles.UNITS[card]} ({miles:,} KrisFlyer miles) "
-                f"expire at the end of {when}. "
-                f"Transfer fee {about}S${fee:,.2f}.")
-    return f"{text}\n{WHAT_TO_DO[card]}"
+        lines += [f"💰 {points:,} {run_miles.UNITS[card]} ({miles:,} KrisFlyer miles)",
+                  f"💵 Transfer fee {about}S${fee:,.2f}"]
+    return run_miles.card("reminder", left, "\n".join(lines),
+                          f"💡 <i>{run_miles.esc(WHAT_TO_DO[card])}</i>")
 
 
 def load_sent():

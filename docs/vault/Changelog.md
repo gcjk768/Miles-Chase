@@ -5,6 +5,7 @@ updated: 2026-10-01
 # Changelog
 
 ## 2026-10-01
+- feat: every Telegram message is an HTML card (James's Telegram style): `emoji <b>TITLE</b> · subtitle` header, one block per item, links as short `<a>` labels, logs and Sources/Baseline in an expandable quote under a divider. One send path, `send_telegram` in [run_miles.py](../../run_miles.py): `parse_mode=HTML`, splits at 4000 between blocks and never inside a tag (`html_chunks` closes/reopens tags), and resends as plain text if Telegram answers 400 can't parse entities. Claude output is escaped first (`llm_html`), then bold titles, links and `**bold**`/`-` bullets are converted. Prompts no longer print a title (the script adds it). Tests: escaping, chunking, fallback.
 - feat: `/mileshelp` replaces `/help` in the menu. James Channel shows every bot's commands in one `/` menu (no per-topic scope in Telegram), so names must be unique across bots. `/help` still works.
 - feat: `/miles <question>` replaces `/ask` in the menu (James Channel shares one `/` menu across every bot (Telegram has no per-topic command scope), so three bots' `/ask` collided.) `/ask` still works. Group menu updated via setMyCommands (chat scope). [telegram_bot.py](../../telegram_bot.py)
 - feat: `/ask` answers use emoji (flags per country, ✈️ routes, 💺 cabins, ✅ / ❌ covered, 💡 tips) via `ASK_PROMPT` in `run_miles.py`.

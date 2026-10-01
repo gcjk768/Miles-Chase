@@ -119,15 +119,15 @@ def check(send, fetch=fetch, save=True):
         seen[name] = links[-SEEN_KEPT:]
     posts = [f for f in found if f[0] in FEEDS]
     videos = [f for f in found if f[0] not in FEEDS]
-    for header, items in (("🆕 New from the miles blogs", posts), ("🎥 New miles videos", videos)):
+    for kind, subtitle, emoji, items in (("news", "miles blogs", "📰", posts),
+                                         ("videos", "YouTube", "▶️", videos)):
         if not items:
             continue
-        lines = [header]
-        for name, title, link in items[:MAX_ITEMS_PER_MESSAGE]:
-            lines += ["", title, f"{name} · {link}"]
+        blocks = [f"{emoji} <b>{run_miles.esc(title)}</b>\n🔗 {run_miles.link(link, name)}"
+                  for name, title, link in items[:MAX_ITEMS_PER_MESSAGE]]
         if len(items) > MAX_ITEMS_PER_MESSAGE:
-            lines += ["", f"and {len(items) - MAX_ITEMS_PER_MESSAGE} more"]
-        send("\n".join(lines))
+            blocks.append(f"<i>and {len(items) - MAX_ITEMS_PER_MESSAGE} more</i>")
+        send(run_miles.card(kind, f"{len(items)} new · {subtitle}", *blocks))
     if save:
         SEEN.parent.mkdir(parents=True, exist_ok=True)
         SEEN.write_text(json.dumps(seen, indent=1) + "\n")
