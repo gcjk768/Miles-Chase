@@ -1,8 +1,11 @@
 ---
 tags: [active]
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 # Changelog
+
+## 2026-10-01
+- fix: KF line in the `data/my_points.txt` template no longer asks for an expiry (`exp [YYYY-MM]`), since KrisFlyer has no single expiry to look up; the leftover placeholder was blocking the monthly report.
 
 ## 2026-09-30
 - fix: `telegram_api` waits and retries on 429 Too Many Requests (group limit ~20 msgs/min hit by the long /tickets list); typing indicator uses `retries=0` so the heartbeat loop never sleeps.

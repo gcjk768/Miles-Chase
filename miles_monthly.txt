@@ -60,7 +60,7 @@ MY POINTS THIS MONTH
 CR: [points] exp [YYYY-MM]
 CPM: [points]
 SCR: [points] exp [YYYY-MM]
-KF: [miles already in KrisFlyer] exp [YYYY-MM]
+KF: [miles already in KrisFlyer]
 Family: [optional, e.g. Dad KF 30000]
 Spend this month: [optional, e.g. CR online 600]
 Card fee months: [optional, e.g. CR Mar, CPM Jul, SCR Nov]

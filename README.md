@@ -161,7 +161,7 @@ the commands above; changes apply on the next run, with no restart needed.
 CR: 52000 exp 2027-01        Citi Rewards points and expiry month
 CPM: 20000                   Citi PremierMiles: already miles (Citi Miles), they don't expire
 SCR: 31000 exp 2027-06       Standard Chartered Rewards points and expiry month
-KF: 12000 exp 2029-01        miles already in KrisFlyer
+KF: 12000                    miles already in KrisFlyer
 Goal: Tokyo business, 2 pax, Mar 2027        optional
 Family: Dad KF 30000                         optional, for combined totals
 Spend this month: CR online 600              optional, for bonus cap warnings

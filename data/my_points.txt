@@ -6,7 +6,7 @@
 CR: [points] exp [YYYY-MM]
 CPM: [Citi Miles]
 SCR: [points] exp [YYYY-MM]
-KF: [miles already in KrisFlyer] exp [YYYY-MM]
+KF: [miles already in KrisFlyer]
 # Family: Dad KF 30000
 # Spend this month: CR online 600
 # Card fee months: CR Mar, CPM Jul, SCR Nov
