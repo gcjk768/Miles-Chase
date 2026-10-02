@@ -7,3 +7,5 @@ state/telegram_offset.txt
 state/reminders_sent.json
 state/heartbeat
 state/news_seen.json
+state/news_feeds.json
+state/promos_seen.json

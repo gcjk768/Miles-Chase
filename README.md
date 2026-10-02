@@ -46,7 +46,8 @@ and restarts if it ever gets stuck. See [Staying healthy](#staying-healthy).
    Claude searches the web for award rates, deals and fares, using your Claude subscription.
 4. The runner then checks the report, posts it to your channel, and saves history in `state/`.
 5. **`reminders.py`** posts expiry reminders straight to Telegram. It doesn't use Claude.
-6. **`news_watch.py`** checks the miles blogs every 30 minutes and posts new relevant deals. It
+6. **`news_watch.py`** checks the miles blogs and YouTube channels every hour and posts new relevant deals;
+   **`promo_watch.py`** does the same for KrisFlyer partner promos and KrisShop brand discounts. It
    doesn't use Claude either.
 7. If a job fails, **`repair.py`** asks `claude -p` to fix it, and **`healthcheck.py`** restarts
    the container if the scheduler gets stuck.
@@ -235,7 +236,7 @@ before transferring points. For reliable fares, put results from a flight price 
 
 ## New-deal alerts
 
-Every 30 minutes the app reads the news feeds of [The MileLion](https://milelion.com) and
+Every hour, 24/7, the app reads the news feeds of [The MileLion](https://milelion.com) and
 [Mainly Miles](https://mainlymiles.com). This doesn't use Claude. When there's a new post that
 mentions KrisFlyer, Singapore Airlines, Scoot, Saver awards, Spontaneous Escapes, a transfer bonus,
 your cards or a city on your watchlist, you get one message:
@@ -250,6 +251,17 @@ The MileLion · https://milelion.com/...
 - Each post is sent once. The very first check only notes what's already there, so you don't get
   old posts.
 - If a blog is down, it's skipped and tried again next time.
+- Feeds are fetched with conditional requests (ETag / Last-Modified in `state/news_feeds.json`), so an
+  unchanged feed costs one tiny 304 reply. Only when there are new matching items is Claude asked
+  (opus, then sonnet; if both fail the items go out unfiltered) which of them matter to you:
+  KrisFlyer earn/burn, DBS/UOB/Citi card promos, SQ award availability, transfer bonuses. The
+  🆕 card shows its one-line reason per item. Items it skips are logged in the vault, never re-asked.
+- **Promos** (`promo_watch.py`, same hour): the KrisFlyer promotions page on singaporeair.com (partner
+  bonus-miles offers, bank sign-up and transfer bonuses) and KrisShop's product API for the brands in
+  `PROMO_BRANDS` (default Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips, Nintendo): a product
+  counts when it's discounted, and alerts again only if its sale price changes. Brand, bank, card and
+  transfer promos post straight away; the rest (hotel stays and the like) go through the same Claude
+  gate. Dedup lives in `state/promos_seen.json`; the first read of a source only records what's there.
 - Change how often it checks with `NEWS_EVERY_MINUTES`, or turn it off with `NEWS_ALERTS=off`.
 - To test it: `sudo docker exec miles-chase python3 run_miles.py news --no-send` prints what's new
   without sending or remembering it.
@@ -310,8 +322,9 @@ All settings go in `.env`:
 | `ANTHROPIC_API_KEY` | Pay-per-use alternative to the token. Set only one. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Where reports are posted and commands are read |
 | `SPLIT_MESSAGES` | `sections` (default) posts each report section as its own message, with only the first one making a sound. `off` posts one long message. |
-| `NEWS_ALERTS` | `on` (default) or `off`: new-deal alerts from the miles blogs |
-| `NEWS_EVERY_MINUTES` | How often to check the blogs, default `30` (minimum 5) |
+| `NEWS_ALERTS` | `on` (default) or `off`: the hourly news, video and promo watch |
+| `NEWS_EVERY_MINUTES` | How often to check, default `60` (minimum 5) |
+| `PROMO_BRANDS` | Brands watched on KrisShop and in KrisFlyer promos (comma-separated); default Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips, Nintendo |
 | `SELF_REPAIR` | `on` (default) or `off`: let Claude fix broken data after a failed job |
 | `DAILY_QUIET` | Quiet days: `line` (default) posts one short line, `silent` posts nothing, `off` always posts the full report |
 | `VAULT_DIR` | Obsidian vault folder (`/vault` on the NAS). The bot logs every report, answer, alert, reminder, points update and self-repair there, and reads recent history back into the Claude prompts so it doesn't repeat itself. Unset = off. |
@@ -409,7 +422,8 @@ sudo docker logs --tail 50 miles-chase
 | `scheduler.py` | Runs the jobs on schedule and answers Telegram commands (the container's main process) |
 | `telegram_bot.py` | The Telegram commands |
 | `reminders.py` | Expiry reminders |
-| `news_watch.py` | New-deal alerts from the miles blogs' feeds |
+| `news_watch.py` | New-deal alerts from the miles blogs' feeds and YouTube channels, with the Claude importance gate (`judge`) |
+| `promo_watch.py` | KrisFlyer partner promos + KrisShop brand discounts, hourly |
 | `repair.py` | Self-repair with `claude -p` after a failed job |
 | `vault.py` | Obsidian vault: Activity log, Deals and Cards notes, memory for the prompts |
 | `healthcheck.py` | Docker healthcheck: restarts the container if the scheduler gets stuck |

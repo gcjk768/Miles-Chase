@@ -5,7 +5,8 @@ Singapore time:
     18:00 daily       `run_miles.py daily`, fare tracker + region deals (Claude); silent if nothing new
     08:07 on the 1st  `run_miles.py monthly`, the coach report (Claude)
     09:00 daily       `run_miles.py reminders`, expiry reminders (no Claude)
-    every 30 minutes  `run_miles.py news`, new posts on the miles blogs (no Claude)
+    every hour, 24/7  `run_miles.py news` + `run_miles.py promos`: new blog posts / videos and new
+                      KrisFlyer / KrisShop promos; Claude (opus, then sonnet) judges what matters
 
 If the machine was off at a job's time, the job runs as soon as it's back, as long as it's
 still the same day. Between jobs it answers Telegram commands such as /points.
@@ -65,9 +66,9 @@ def env(name, default):
 
 def news_every_minutes():
     try:
-        return max(5, int(env("NEWS_EVERY_MINUTES", "30")))
+        return max(5, int(env("NEWS_EVERY_MINUTES", "60")))
     except ValueError:
-        return 30
+        return 60
 
 
 def due_jobs(now, last_run):
@@ -83,8 +84,9 @@ def due_jobs(now, last_run):
         jobs.append(("reminders", today))
     if env("NEWS_ALERTS", "on") != "off":
         slot = f"{today} {(now.hour * 60 + now.minute) // news_every_minutes()}"
-        if last_run.get("news") != slot:
-            jobs.append(("news", slot))
+        for mode in ("news", "promos"):
+            if last_run.get(mode) != slot:
+                jobs.append((mode, slot))
     return jobs
 
 
@@ -97,7 +99,7 @@ def load_last_run(now):
     except (ValueError, OSError) as error:
         log(f"scheduler.json unreadable ({error}); starting fresh")
     # First start: don't fire a report straight away just because today's time has passed.
-    last_run = {mode: key for mode, key in due_jobs(now, {}) if mode != "news"}
+    last_run = {mode: key for mode, key in due_jobs(now, {}) if mode not in ("news", "promos")}
     save_last_run(last_run)
     return last_run
 
@@ -269,9 +271,12 @@ def tick(last_run, token, chat_id):
 def main():
     run_miles.load_env_file()
     beat()
+    moved = vault.migrate()
+    if moved:
+        log(f"vault: moved {moved} Activity note(s) into Activity/YYYY/MM/")
     last_run = load_last_run(datetime.now(run_miles.SGT))
     log(f"scheduler started: daily {DAILY_AT:%H:%M}, monthly on the 1st {MONTHLY_AT:%H:%M}, "
-        f"reminders {REMINDERS_AT:%H:%M}, news every {news_every_minutes()} min (SGT)")
+        f"reminders {REMINDERS_AT:%H:%M}, news + promos every {news_every_minutes()} min (SGT)")
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     while True:

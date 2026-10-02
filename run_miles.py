@@ -5,7 +5,8 @@ Usage:
     python run_miles.py daily      # daily fare tracker
     python run_miles.py monthly    # monthly miles coach report
     python run_miles.py reminders  # expiry reminders, no Claude needed
-    python run_miles.py news       # new posts on the miles blogs, no Claude needed
+    python run_miles.py news       # new blog posts / videos; Claude judges what matters
+    python run_miles.py promos     # new KrisFlyer partner / KrisShop brand promos
     python run_miles.py ask "Transfer CR now for Tokyo?"   # one-off question to Claude
     python run_miles.py tickets    # award tickets your miles can book (Claude)
 
@@ -531,12 +532,13 @@ def build_ask(today, question, mode="ask"):
     ])
 
 
-def run_claude(prompt, tools=("WebSearch", "WebFetch")):
+def run_claude(prompt, tools=("WebSearch", "WebFetch"), model=None):
     cmd = [os.environ.get("CLAUDE_BIN") or "claude", "-p"]
     if tools:
         cmd += ["--allowedTools", *tools]
-    if os.environ.get("CLAUDE_MODEL"):
-        cmd += ["--model", os.environ["CLAUDE_MODEL"]]
+    model = model or os.environ.get("CLAUDE_MODEL")
+    if model:
+        cmd += ["--model", model]
     try:
         result = subprocess.run(
             cmd, input=prompt, capture_output=True, text=True,
@@ -725,7 +727,7 @@ DIVIDER = "━━━━━━━━━━━━━━━━"
 # One fixed emoji + title per message type.
 SECTION_TITLES = {
     "daily": "✈️ MILES DAILY", "monthly": "📊 MILES MONTHLY", "tickets": "🎟 AWARD TICKETS",
-    "ask": "💬 MILES ANSWER", "news": "🆕 MILES NEWS", "videos": "🎥 MILES VIDEOS",
+    "ask": "💬 MILES ANSWER", "news": "🆕 MILES NEWS", "videos": "🎥 MILES VIDEOS", "promos": "🛍️ MILES PROMOS",
     "reminder": "⏰ EXPIRY REMINDER", "error": "⚠️ MILES ERROR", "points": "💰 BALANCES",
     "watch": "🗺 WATCHLIST", "goal": "🎯 GOAL", "help": "🧭 MILES CHASE", "note": "ℹ️ MILES CHASE",
 }
@@ -860,7 +862,7 @@ def html_chunks(text, limit=TELEGRAM_LIMIT):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news", "ask", "tickets"]))
+    parser.add_argument("mode", choices=sorted([*PROMPTS, "reminders", "news", "promos", "ask", "tickets"]))
     parser.add_argument("question", nargs="*", help="ask only: the question for Claude")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-send", action="store_true")
@@ -879,16 +881,18 @@ def main():
     if split not in SPLIT_MODES:
         fail(f"SPLIT_MESSAGES must be one of {', '.join(SPLIT_MODES)}, not {split!r}")
 
-    if args.mode == "news":
+    if args.mode in ("news", "promos"):
         import news_watch
+        import promo_watch
+        watch = news_watch if args.mode == "news" else promo_watch
         send = (lambda text: send_telegram(text, token, chat_id)) if posting else print
         try:
-            count, errors = news_watch.check(send, save=bool(posting))
+            count, errors = watch.check(send, save=bool(posting))
         except (RuntimeError, OSError) as error:
             fail(str(error))
         for error in errors:
             print(f"warning: couldn't read {error}", file=sys.stderr)
-        print(f"Found {count} new post(s).")
+        print(f"Found {count} new {'post' if args.mode == 'news' else 'promo'}(s).")
         return
 
     if args.mode == "reminders":

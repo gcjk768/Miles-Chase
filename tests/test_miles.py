@@ -5,6 +5,7 @@ No network, Claude or Telegram needed: file paths point at a temporary folder.
 """
 
 import io
+import json
 import os
 import shutil
 import sys
@@ -19,6 +20,7 @@ import reminders  # noqa: E402
 import run_miles  # noqa: E402
 import scheduler  # noqa: E402
 import news_watch  # noqa: E402
+import promo_watch  # noqa: E402
 import telegram_bot  # noqa: E402
 import vault  # noqa: E402
 
@@ -49,6 +51,8 @@ class TempFiles(unittest.TestCase):
             (reminders, "SENT"): self.dir / "reminders_sent.json",
             (telegram_bot, "OFFSET"): self.dir / "offset.txt",
             (news_watch, "SEEN"): self.dir / "news_seen.json",
+            (news_watch, "FEED_CACHE"): self.dir / "news_feeds.json",
+            (promo_watch, "SEEN"): self.dir / "promos_seen.json",
             (scheduler, "LAST_RUN"): self.dir / "scheduler.json",
             (scheduler, "HEARTBEAT"): self.dir / "heartbeat",
         }
@@ -493,7 +497,7 @@ class Schedule(TempFiles):
         return datetime(*args, tzinfo=run_miles.SGT)
 
     def modes(self, now, last_run):
-        return [mode for mode, _ in scheduler.due_jobs(now, last_run) if mode != "news"]
+        return [mode for mode, _ in scheduler.due_jobs(now, last_run) if mode not in ("news", "promos")]
 
     def test_due_jobs(self):
         self.assertEqual(self.modes(self.at(2026, 10, 1, 7, 0), {}), [])
@@ -507,9 +511,9 @@ class Schedule(TempFiles):
 
     def test_news_runs_once_per_slot(self):
         first = dict(scheduler.due_jobs(self.at(2026, 10, 1, 10, 5), {}))["news"]
-        same_slot = scheduler.due_jobs(self.at(2026, 10, 1, 10, 29), {"news": first})
+        same_slot = scheduler.due_jobs(self.at(2026, 10, 1, 10, 59), {"news": first})
         self.assertNotIn("news", dict(same_slot))
-        self.assertIn("news", dict(scheduler.due_jobs(self.at(2026, 10, 1, 10, 30), {"news": first})))
+        self.assertIn("news", dict(scheduler.due_jobs(self.at(2026, 10, 1, 11, 0), {"news": first})))
 
     def test_corrupted_schedule_file_starts_fresh(self):
         scheduler.LAST_RUN.write_text("{not json")
@@ -631,14 +635,53 @@ class NewsAlerts(TempFiles):
         self.feeds = {name: list(self.FEED_A) for name in self.all_feeds}
         self.sent = []
 
-    def fetch(self, url):
+    def fetch(self, url, cache=None):
         name = next(n for n, u in self.all_feeds.items() if u == url)
         if self.feeds[name] is None:
             raise OSError("feed down")
         return self.feeds[name]
 
+    def judge(self, items):  # keep everything unless a test swaps it
+        self.judged = items
+        return {i: "" for i in range(1, len(items) + 1)}
+
     def check(self):
-        return news_watch.check(self.sent.append, fetch=self.fetch)
+        return news_watch.check(self.sent.append, fetch=self.fetch, judge=self.judge)
+
+    def test_gate_only_asked_when_new_and_decides_what_is_sent(self):
+        self.judged = None
+        self.check()
+        self.assertIsNone(self.judged)  # first read: nothing new, Claude not asked
+        name = next(iter(news_watch.FEEDS))
+        self.feeds[name] = [("Citi transfer bonus to KrisFlyer", "https://a/3", ""),
+                            ("UOB card promo", "https://a/4", ""),
+                            ("KrisFlyer lounge review", "https://a/5", "")] + self.FEED_A
+        self.judge = lambda items: {1: "25% transfer bonus", 2: "UOB bonus miles"}
+        self.assertEqual(self.check()[0], 2)
+        self.assertIn("💡 <i>25% transfer bonus</i>", self.sent[0])
+        self.assertIn("https://a/4", self.sent[0])
+        self.assertNotIn("lounge review", self.sent[0])
+        self.judge = lambda items: {}  # SKIP
+        self.feeds[name] = [("DBS Altitude bonus", "https://a/6", "")] + self.feeds[name]
+        self.assertEqual(self.check()[0], 0)
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self.check()[0], 0)  # skipped items are not judged again
+
+    def test_conditional_requests_skip_unchanged_feeds(self):
+        calls = []
+
+        def fetch(url, cache=None):
+            calls.append(dict(cache) if cache is not None else None)
+            if cache is not None:
+                cache["etag"] = "v1"
+                return None  # 304 Not Modified
+            return list(self.FEED_A)
+
+        news_watch.check(self.sent.append, fetch=fetch, judge=self.judge)
+        self.assertTrue(all(c == {} for c in calls))  # first read: no validators yet
+        calls.clear()
+        self.assertEqual(news_watch.check(self.sent.append, fetch=fetch, judge=self.judge), (0, []))
+        self.assertTrue(all(c == {"etag": "v1"} for c in calls))  # validators persisted, 304 honoured
 
     def test_first_read_only_records(self):
         self.assertEqual(self.check(), (0, []))
@@ -718,15 +761,30 @@ class VaultMemory(NewsAlerts):
         os.environ["VAULT_DIR"] = str(self.vault)
 
     def activity(self):
-        return "".join(p.read_text(encoding="utf-8") for p in sorted((self.vault / "Activity").glob("*.md")))
+        return "".join(p.read_text(encoding="utf-8") for p in sorted((self.vault / "Activity").rglob("*.md")))
 
     def test_activity_line_format(self):
         vault.log("💰", "Points updated", "CR 52,000", "Cards/Citi Rewards",
                   now=datetime(2026, 10, 2, 18, 5, tzinfo=vault.SGT))
-        text = (self.vault / "Activity" / "2026-10-02.md").read_text(encoding="utf-8")
+        text = (self.vault / "Activity" / "2026" / "10" / "2026-10-02.md").read_text(encoding="utf-8")
         self.assertIn("- 18:05 💰 **Points updated** · CR 52,000 · [[Cards/Citi Rewards]]\n", text)
         self.assertTrue(text.startswith("---\ntags: [active]\nupdated: 2026-10-02\n---\n"))
-        self.assertIn("[[Activity/2026-10-02]]", (self.vault / "Home.md").read_text(encoding="utf-8"))
+        home = (self.vault / "Home.md").read_text(encoding="utf-8")
+        self.assertIn("## This month · 2026-10\n- [[Activity/2026/10/2026-10-02]]", home)
+
+    def test_flat_activity_notes_migrate_into_year_month_folders(self):
+        flat = self.vault / "Activity"
+        flat.mkdir(parents=True)
+        (flat / "2026-09-30.md").write_text("- 10:00 ✈️ **Daily report sent** · old https://a/old\n", encoding="utf-8")
+        (flat / "README.md").write_text("not a day note", encoding="utf-8")
+        self.assertEqual(vault.migrate(), 1)
+        self.assertEqual(vault.migrate(), 0)  # idempotent
+        self.assertTrue((flat / "2026" / "09" / "2026-09-30.md").exists())
+        self.assertFalse((flat / "2026-09-30.md").exists())
+        self.assertTrue((flat / "README.md").exists())  # only day notes move; nothing is deleted
+        self.assertIn("2026-09-30 10:00 ✈️", vault.memory())  # memory still reads it
+        self.assertIn("https://a/old", vault.alerted_links())
+        self.assertIn("[[Activity/2026/09/2026-09-30]]", (self.vault / "Home.md").read_text(encoding="utf-8"))
 
     def test_points_update_writes_card_note_with_history(self):
         run_miles.set_balance("CR", 60000)
@@ -792,3 +850,119 @@ class VaultMemory(NewsAlerts):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromoWatch(TempFiles):
+    """KrisFlyer partner promos + KrisShop brand discounts: dedup, brand match, gate, vault."""
+    KF_PAGE = """
+      <div class="card" data-card-id="hsbcsg" data-popup="https://sia/hsbc"><div class="card-image"></div>
+        <div class="card-header"><div class="title"><h6>HSBC Bank (Singapore)</h6></div>
+        <p class="description">Receive 85,000 KrisFlyer miles when you start an HSBC Premier relationship</p></div></div>
+      <div class="card" data-card-id="ytl" data-popup="https://sia/ytl"><div class="card-header">
+        <h6>YTL Hotels</h6><p class="description">Earn 600 bonus KrisFlyer miles per night (1 July &ndash; 31 Dec 2026)</p></div></div>
+    """
+
+    def setUp(self):
+        super().setUp()
+        os.environ["PROMO_BRANDS"] = "Garmin, Dyson"
+        self.page, self.sent, self.judged, self.queries = self.KF_PAGE, [], [], []
+        self.ks = {"data": {"b0": {"items": [
+            self.product("GARMIN FORERUNNER 165", "K360125CF", 347.71, 218.35, 37.2, "27294.0", "2026-10-31 00:00:00"),
+            self.product("GARMIN FORERUNNER 70", "K404937CF", 320, 320, 0),
+            self.product("STRAP FOR WATCHES", "X1", 50, 40, 20),
+        ]}, "b1": {"items": []}}}
+
+    def tearDown(self):
+        os.environ.pop("PROMO_BRANDS", None)
+        super().tearDown()
+
+    @staticmethod
+    def product(name, sku, was, now, off, miles=None, until=None):
+        return {"name": name, "sku": sku, "url_key": sku.lower(), "calculated_miles_point": miles,
+                "special_to_date": until, "price_range": {"minimum_price": {
+                    "regular_price": {"value": was}, "final_price": {"value": now}, "discount": {"percent_off": off}}}}
+
+    def get(self, url, data=None, timeout=25):
+        if data:
+            self.queries.append(data["query"])
+            return json.dumps(self.ks)
+        return self.page
+
+    def judge(self, items):
+        self.judged += items
+        return {i: "worth it" for i, (_, title, _, _) in enumerate(items, 1) if "YTL" in title}
+
+    def check(self):
+        sources = {"KrisFlyer": lambda: promo_watch.fetch_krisflyer(self.get),
+                   "KrisShop": lambda: promo_watch.fetch_krisshop(self.get)}
+        return promo_watch.check(self.sent.append, sources=sources, judge=self.judge)
+
+    def test_first_read_records_then_new_promos_alert_once(self):
+        self.assertEqual(self.check(), (0, []))
+        self.assertEqual(self.sent, [])
+        self.assertIn('b0: products(search: "Garmin"', self.queries[0])
+        self.assertIn('b1: products(search: "Dyson"', self.queries[0])
+        self.page += ('<div class="card" data-card-id="dbs" data-popup="https://sia/dbs"><h6>DBS Bank</h6>'
+                      '<p class="description">Earn 10,000 bonus KrisFlyer miles with a new DBS Altitude card</p></div>')
+        self.ks["data"]["b1"]["items"] = [self.product("DYSON V8", "D1", 600, 480, 20, "60000")]
+        self.assertEqual(self.check()[0], 2)
+        card = self.sent[0]
+        self.assertTrue(card.startswith("🛍️ <b>MILES PROMOS</b> · 2 new"))
+        self.assertIn("🆕 ✈️ <b>DBS Bank</b>", card)
+        self.assertIn("🆕 🛍️ <b>Dyson · Dyson V8</b>\n💰 S$480 (was S$600, ▼20%) · 60,000 miles", card)
+        self.assertIn('<a href="https://www.krisshop.com/en/product/D1/d1.html">KrisShop</a>', card)
+        self.assertEqual(self.judged, [])  # brand and bank promos: no Claude needed
+        self.assertEqual(self.check()[0], 0)  # same promos again: silent
+        self.assertEqual(len(self.sent), 1)
+
+    def test_krisshop_keeps_only_discounted_brand_items_and_price_drops_realert(self):
+        self.check()
+        self.ks["data"]["b0"]["items"][0]["price_range"]["minimum_price"]["final_price"]["value"] = 199.0
+        self.assertEqual(self.check()[0], 1)
+        self.assertIn("S$199 (was S$348", self.sent[0])
+        self.assertIn("⏰ until 2026-10-31", self.sent[0])
+        self.assertNotIn("Strap", self.sent[0])  # discounted but not the brand
+        self.assertNotIn("Forerunner 70", self.sent[0])  # brand but not discounted
+
+    def test_ambiguous_promos_go_through_the_gate(self):
+        self.check()
+        self.page += ('<div class="card" data-card-id="ytl" data-popup="https://sia/ytl"><h6>YTL Hotels</h6>'
+                      '<p class="description">Earn 1,000 bonus KrisFlyer miles per night (2027)</p></div>'
+                      '<div class="card" data-card-id="spa" data-popup="https://sia/spa"><h6>Some Spa</h6>'
+                      '<p class="description">Earn 100 KrisFlyer miles per visit</p></div>')
+        self.assertEqual(self.check()[0], 1)
+        self.assertEqual([t for _, t, _, _ in self.judged], ["YTL Hotels", "Some Spa"])
+        self.assertIn("💡 <i>worth it</i>", self.sent[0])
+        self.assertNotIn("Some Spa", self.sent[0])
+
+    def test_a_source_down_is_reported_and_the_other_still_works(self):
+        self.check()
+
+        def get(url, data=None, timeout=25):
+            if data:
+                raise OSError("api down")
+            return self.page + ('<div class="card" data-card-id="uob" data-popup="https://sia/uob"><h6>UOB</h6>'
+                                '<p class="description">Transfer bonus 20% to KrisFlyer</p></div>')
+        self.get = get
+        count, errors = self.check()
+        self.assertEqual((count, len(errors)), (1, 1))
+        self.assertIn("KrisShop: api down", errors[0])
+
+    def test_vault_gets_deal_note_and_activity_line(self):
+        os.environ["VAULT_DIR"] = str(self.dir / "vault")
+        self.check()
+        self.page += ('<div class="card" data-card-id="citi" data-popup="https://sia/citi"><h6>Citi</h6>'
+                      '<p class="description">Bonus miles on PremierMiles</p></div>')
+        self.check()
+        note = (self.dir / "vault" / "Deals" / "Citi.md").read_text(encoding="utf-8")
+        self.assertIn("**Offer:** Bonus miles on PremierMiles", note)
+        activity = "".join(p.read_text(encoding="utf-8") for p in (self.dir / "vault" / "Activity").rglob("*.md"))
+        self.assertIn("**Promo alerted** · https://sia/citi · Citi · Bonus miles on PremierMiles · [[Deals/Citi]]", activity)
+
+    def test_scheduler_runs_news_and_promos_every_hour(self):
+        os.environ.pop("NEWS_EVERY_MINUTES", None)
+        done = {"daily": "2026-10-02", "reminders": "2026-10-02"}
+        self.assertEqual(scheduler.due_jobs(datetime(2026, 10, 2, 3, 15), done),
+                         [("news", "2026-10-02 3"), ("promos", "2026-10-02 3")])
+        done.update(news="2026-10-02 3", promos="2026-10-02 3")
+        self.assertEqual(scheduler.due_jobs(datetime(2026, 10, 2, 3, 59), done), [])
