@@ -1,6 +1,6 @@
 ---
 tags: [active]
-updated: 2026-09-30
+updated: 2026-10-02
 ---
 # Deploy (NAS)
 
@@ -11,7 +11,10 @@ Stack folder `/volume1/docker/miles-chase` (Dockge). From the repo: `./deploy.sh
 TELEGRAM_BOT_TOKEN=<from BotFather>
 TELEGRAM_CHAT_ID=-1002069000031/2988   # James Channel topic "Miles-Chase"
 CLAUDE_CODE_OAUTH_TOKEN=<same as sg-recipe-bot>
+VAULT_DIR=/vault
 ```
+
+Obsidian vault: compose mounts `"/volume1/James/Obsidian/Miles Chase:/vault"`; [deploy.sh](../../deploy.sh) runs `mkdir -p` on it as James first, so it's uid 1000 and writable (a Docker-created bind dir would be root-owned).
 Bot must be a member of James Channel. Commands must be sent inside the Miles topic.
 
 Bot privacy mode is on: in the group use `/points@jameskoh_miles_bot` (tap `/` for the menu), or disable privacy in BotFather and re-add the bot.
