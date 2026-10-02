@@ -20,6 +20,7 @@ import run_miles  # noqa: E402
 import scheduler  # noqa: E402
 import news_watch  # noqa: E402
 import telegram_bot  # noqa: E402
+import vault  # noqa: E402
 
 POINTS = """# comment
 CR: 52000 exp 2027-01
@@ -56,8 +57,12 @@ class TempFiles(unittest.TestCase):
             setattr(module, name, path)
         run_miles.MY_POINTS.write_text(POINTS)
         run_miles.WATCHLIST.write_text(WATCHLIST)
+        self.saved_vault = os.environ.pop("VAULT_DIR", None)  # never touch a real vault
 
     def tearDown(self):
+        os.environ.pop("VAULT_DIR", None)
+        if self.saved_vault is not None:
+            os.environ["VAULT_DIR"] = self.saved_vault
         for (module, name), value in self.saved.items():
             setattr(module, name, value)
         shutil.rmtree(self.dir)
@@ -702,6 +707,87 @@ class NewsAlerts(TempFiles):
     def test_corrupted_seen_file(self):
         news_watch.SEEN.write_text("[broken")
         self.assertEqual(self.check(), (0, []))
+
+
+class VaultMemory(NewsAlerts):
+    """The NAS vault standard: movement log, entity notes, memory in prompts, best-effort I/O."""
+
+    def setUp(self):
+        super().setUp()
+        self.vault = self.dir / "vault"
+        os.environ["VAULT_DIR"] = str(self.vault)
+
+    def activity(self):
+        return "".join(p.read_text(encoding="utf-8") for p in sorted((self.vault / "Activity").glob("*.md")))
+
+    def test_activity_line_format(self):
+        vault.log("💰", "Points updated", "CR 52,000", "Cards/Citi Rewards",
+                  now=datetime(2026, 10, 2, 18, 5, tzinfo=vault.SGT))
+        text = (self.vault / "Activity" / "2026-10-02.md").read_text(encoding="utf-8")
+        self.assertIn("- 18:05 💰 **Points updated** · CR 52,000 · [[Cards/Citi Rewards]]\n", text)
+        self.assertTrue(text.startswith("---\ntags: [active]\nupdated: 2026-10-02\n---\n"))
+        self.assertIn("[[Activity/2026-10-02]]", (self.vault / "Home.md").read_text(encoding="utf-8"))
+
+    def test_points_update_writes_card_note_with_history(self):
+        run_miles.set_balance("CR", 60000)
+        run_miles.set_balance("CR", 61000)
+        note = (self.vault / "Cards" / "Citi Rewards.md").read_text(encoding="utf-8")
+        self.assertIn("**Balance:** 61,000 points = 24,400 KrisFlyer miles", note)
+        self.assertIn("**Expiry:** 2027-01", note)
+        history = note.split("## History\n", 1)[1]
+        self.assertEqual(history.count("balance set to"), 2)  # append-only
+        self.assertIn("**Points updated** · CR 61,000 exp 2027-01 · [[Cards/Citi Rewards]]", self.activity())
+
+    def test_memory_is_capped_newest_first_and_reaches_prompts(self):
+        for day in (1, 2):
+            for minute in range(60):
+                vault.log("✈️", "Daily report sent", f"day {day} event {minute} " + "x" * 60,
+                          now=datetime(2026, 10, day, 10, minute, tzinfo=vault.SGT))
+        memory = vault.memory()
+        self.assertLessEqual(len(memory), vault.MEMORY_CHARS)
+        self.assertTrue(memory.startswith("2026-10-02 10:59 ✈️"))  # newest event first
+        self.assertNotIn("day 1 event 0 ", memory)  # oldest dropped by the cap
+        today = date(2026, 10, 2)
+        for prompt in (run_miles.build_daily(today), run_miles.build_monthly(today)[0],
+                       run_miles.build_ask(today, "Transfer CR now?")):
+            self.assertIn(run_miles.MEMORY_HEADER, prompt)
+            self.assertIn("day 2 event 59", prompt)
+        self.assertNotIn(run_miles.MEMORY_HEADER, run_miles.build_ask(today, "", "tickets"))
+
+    def test_no_memory_block_without_vault(self):
+        os.environ.pop("VAULT_DIR")
+        self.assertNotIn(run_miles.MEMORY_HEADER, run_miles.build_daily(date(2026, 10, 2)))
+
+    def test_news_already_in_vault_is_not_realerted(self):
+        self.check()
+        name = next(iter(news_watch.FEEDS))
+        self.feeds[name] = [("Citi transfer bonus to KrisFlyer", "https://a/3", "")] + self.FEED_A
+        self.assertEqual(self.check()[0], 1)
+        self.assertIn("https://a/3", self.activity())
+        deal = (self.vault / "Deals" / "Citi transfer bonus to KrisFlyer.md").read_text(encoding="utf-8")
+        self.assertIn("alerted in Telegram · https://a/3", deal)
+        # state/ forgets the post (e.g. trimmed or reset): the vault still stops a repeat
+        seen = news_watch.load_seen()
+        seen[name].remove("https://a/3")
+        news_watch.SEEN.write_text(news_watch.json.dumps(seen))
+        self.assertEqual(self.check()[0], 0)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_vault_errors_never_raise(self):
+        broken = self.dir / "not-a-folder"
+        broken.write_text("a file where the vault folder should be")
+        os.environ["VAULT_DIR"] = str(broken)
+        vault.log("💰", "Points updated")
+        self.assertIsNone(vault.entity("Cards", "Citi Rewards", "x", "y"))
+        self.assertEqual(vault.memory(("Cards",)), "")
+        self.assertEqual(vault.alerted_links(), set())
+        run_miles.set_balance("CR", 70000)  # the real work still happens
+        self.assertIn("CR: 70000", run_miles.MY_POINTS.read_text())
+        self.check()
+        name = next(iter(news_watch.FEEDS))
+        self.feeds[name] = [("Citi transfer bonus to KrisFlyer", "https://a/3", "")] + self.FEED_A
+        self.assertEqual(self.check()[0], 1)  # the alert still goes out
+        self.assertEqual(len(self.sent), 1)
 
 
 if __name__ == "__main__":

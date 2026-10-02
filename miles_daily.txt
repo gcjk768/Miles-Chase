@@ -40,6 +40,14 @@ https://source-link
 At most 3 short lines per region, each with its source link. Skip regions with nothing new; never
 write "no updates" for a region.
 
+BRAND PROMOS
+Check for anything NEW in the last 24 hours where a KrisFlyer member can earn bonus miles or get a
+discount on Garmin, Dyson or Apple products (KrisShop, Kris+, KrisFlyer shopping partners, card or
+retailer promos that mention KrisFlyer). Use milelion.com, mainlymiles.com, krisshop.com and
+krisflyer.com. Add ONE block starting with "🛍️ Brand promos", at most 3 short lines per brand, each
+with its source link and end date. Skip brands with nothing new. If none, omit the block entirely.
+It counts as NEWS for STATUS.
+
 STATUS
 The very first line must be exactly "STATUS: NEWS" or "STATUS: QUIET". Use NEWS if there is any alert or region update, if any cash fare changed vs YESTERDAY, or if a fare was found and YESTERDAY is empty. Otherwise use QUIET. The script removes this line before posting.
 

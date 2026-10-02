@@ -11,6 +11,7 @@ import re
 from datetime import date
 
 import run_miles
+import vault
 
 THRESHOLDS = (7, 30, 60)  # days before expiry
 SENT = run_miles.STATE / "reminders_sent.json"
@@ -88,10 +89,16 @@ def load_sent():
 def run(today, send):
     """Send due reminders with `send(text)`, then remember them. Returns how many were sent."""
     sent = load_sent()
-    reminders = due(today, run_miles.read_lines(run_miles.MY_POINTS), sent)
+    lines = run_miles.read_lines(run_miles.MY_POINTS)
+    balances = run_miles.parse_balances(lines)
+    reminders = due(today, lines, sent)
     for keys, text in reminders:
         send(text)
         sent.update(keys)
         SENT.parent.mkdir(parents=True, exist_ok=True)
         SENT.write_text(json.dumps(sorted(sent), indent=2) + "\n")
+        card, expires, days = keys[0].split(":")  # the closest threshold crossed
+        note = run_miles.card_note(card, balances.get(card, 0), expires[:7],
+                                   f"expiry reminder sent ({days}-day threshold)")
+        vault.log("⏰", "Expiry reminder sent", f"{card} expires end {expires[:7]}, {days}-day reminder", note)
     return len(reminders)

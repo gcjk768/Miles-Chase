@@ -4,7 +4,8 @@ No Claude needed.
 Reads the blogs' RSS feeds and the YouTube channels' feeds, and sends one Telegram message listing
 any new post that mentions KrisFlyer, Singapore Airlines, your cards or a city on your watchlist,
 and any new video from a miles channel (general money channels only when it's about miles). Posts already seen are
-remembered in state/news_seen.json. The first check only records what's there, so you don't get
+remembered in state/news_seen.json, and a post the vault's Activity log shows was
+already alerted is never sent again (so a lost state file doesn't repeat alerts). The first check only records what's there, so you don't get
 a flood of old posts.
 """
 
@@ -15,6 +16,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 import run_miles
+import vault
 
 FEEDS = {
     "The MileLion": "https://milelion.com/feed/",
@@ -42,6 +44,7 @@ KEYWORDS = [
     "KrisFlyer", "Singapore Airlines", "SIA", "Scoot", "Spontaneous Escapes", "Saver",
     "Kris+", "Star Alliance", "award", "fare sale", "transfer bonus", "Citi", "PremierMiles",
     "Citi Rewards", "ThankYou", "Standard Chartered", "SC Rewards", "360 Rewards",
+    "KrisShop", "Garmin", "Dyson", "Apple", "iPhone", "MacBook", "iPad",
 ]
 TAG = re.compile(r"<[^>]+>")
 
@@ -95,6 +98,7 @@ def check(send, fetch=fetch, save=True):
     The first time a feed is read, its posts are only recorded, so old posts aren't sent.
     """
     seen = load_seen()
+    alerted = vault.alerted_links()
     words = keywords()
     found, errors = [], []
     for name, url in {**FEEDS, **VIDEO_FEEDS, **MIXED_VIDEO_FEEDS}.items():
@@ -111,7 +115,7 @@ def check(send, fetch=fetch, save=True):
                 continue
             known.add(link)
             links.append(link)
-            if first_read:
+            if first_read or link in alerted:
                 continue
             if name in VIDEO_FEEDS or matches(
                     f"{title} {summary}", words + (VIDEO_KEYWORDS if name in MIXED_VIDEO_FEEDS else [])):
@@ -128,6 +132,12 @@ def check(send, fetch=fetch, save=True):
         if len(items) > MAX_ITEMS_PER_MESSAGE:
             blocks.append(f"<i>and {len(items) - MAX_ITEMS_PER_MESSAGE} more</i>")
         send(run_miles.card(kind, f"{len(items)} new · {subtitle}", *blocks))
+        if save:
+            for name, title, link in items:
+                note = (vault.entity("Deals", title, f"**Source:** {name}\n**Link:** {link}",
+                                     f"alerted in Telegram · {link}") if kind == "news" else None)
+                vault.log(emoji, "Deal alerted" if kind == "news" else "Video alerted",
+                          f"{link} · {name}: {title}", note)
     if save:
         SEEN.parent.mkdir(parents=True, exist_ok=True)
         SEEN.write_text(json.dumps(seen, indent=1) + "\n")

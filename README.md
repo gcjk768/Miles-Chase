@@ -314,6 +314,7 @@ All settings go in `.env`:
 | `NEWS_EVERY_MINUTES` | How often to check the blogs, default `30` (minimum 5) |
 | `SELF_REPAIR` | `on` (default) or `off`: let Claude fix broken data after a failed job |
 | `DAILY_QUIET` | Quiet days: `line` (default) posts one short line, `silent` posts nothing, `off` always posts the full report |
+| `VAULT_DIR` | Obsidian vault folder (`/vault` on the NAS). The bot logs every report, answer, alert, reminder, points update and self-repair there, and reads recent history back into the Claude prompts so it doesn't repeat itself. Unset = off. |
 | `CLAUDE_MODEL` | Optional model override for `claude -p` |
 | `CLAUDE_BIN` | Path to `claude`, only needed under cron. Don't set it for Docker. |
 
@@ -410,6 +411,7 @@ sudo docker logs --tail 50 miles-chase
 | `reminders.py` | Expiry reminders |
 | `news_watch.py` | New-deal alerts from the miles blogs' feeds |
 | `repair.py` | Self-repair with `claude -p` after a failed job |
+| `vault.py` | Obsidian vault: Activity log, Deals and Cards notes, memory for the prompts |
 | `healthcheck.py` | Docker healthcheck: restarts the container if the scheduler gets stuck |
 | `state/` | History written by the runner: monthly balances, daily prices, sent reminders |
 | `Dockerfile`, `docker-compose.yml` | The NAS container |
