@@ -6,6 +6,7 @@ updated: 2026-10-03
 
 ## 2026-10-03
 - feat: **KrisShop brands + any-category deals** ([promo_watch.py](../../promo_watch.py)): `DEFAULT_BRANDS` grows to 27 popular electronics brands (adds Shokz, JBL, Marshall, B&O, Sennheiser, Beats, Panasonic, DJI, GoPro, Insta360, Fujifilm, Canon, Logitech, Xiaomi, Oura, Coros, Suunto, Polar). New source `KrisShop deals`: the 40 most popular items (`ks_popularity`) of every top-level KrisShop category at `CATEGORY_MIN_OFF` (25) % off or more, skipping watched brands. KrisShop sales skip the Claude gate. Queries are split into requests of at most 10 aliases (`MAX_ALIASES`; KrisShop rejects more). Daily prompt + news gate mention the wider brand list and any-category sales. New source = first read only records, so no flood on deploy.
+- fix: the promo card lists partner/bank promos first, then KrisShop items by deepest % off (it was brand order, so 10 shallow Shokz cuts filled the card). [promo_watch.py](../../promo_watch.py)
 - chore: every Claude call on haiku to save tokens (James): `CLAUDE_MODEL=haiku` for reports, /ask and repair; news/promo gate `JUDGE_MODELS` default haiku (was opus → sonnet). [news_watch.py](../../news_watch.py)
 
 ## 2026-10-02

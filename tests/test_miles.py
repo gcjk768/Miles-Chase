@@ -942,6 +942,17 @@ class PromoWatch(TempFiles):
         self.assertNotIn('"P"', self.queries[1])  # empty category skipped
         self.assertTrue(promo_watch.sure(promos[0]))  # KrisShop sales skip the Claude gate
 
+    def test_card_lists_partner_promos_then_deepest_discounts_first(self):
+        self.check()
+        self.page += ('<div class="card" data-card-id="dbs" data-popup="https://sia/dbs"><h6>DBS Bank</h6>'
+                      '<p class="description">Bonus miles</p></div>')
+        self.ks["data"]["b1"]["items"] = [self.product("DYSON V8", "D1", 600, 540, 10),
+                                          self.product("DYSON V15", "D2", 1000, 500, 50)]
+        self.check()
+        card = self.sent[0]
+        self.assertLess(card.index("DBS Bank"), card.index("Dyson V15"))
+        self.assertLess(card.index("Dyson V15"), card.index("Dyson V8"))
+
     def test_many_brands_are_split_into_requests_of_at_most_10_aliases(self):
         os.environ["PROMO_BRANDS"] = ", ".join(f"Brand{n}" for n in range(23))
         promo_watch.fetch_krisshop(self.get)

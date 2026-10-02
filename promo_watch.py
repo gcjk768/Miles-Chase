@@ -111,7 +111,7 @@ def product_promo(source, label, item, min_off=0):
     return {"source": source, "id": f"{item.get('sku')}:{now:.2f}",
             "title": f"{label} · {(item.get('name') or '').title()}", "detail": detail,
             "link": KRISSHOP_PRODUCT.format(sku=item.get("sku"), url_key=item.get("url_key")),
-            "until": (item.get("special_to_date") or "")[:10]}
+            "until": (item.get("special_to_date") or "")[:10], "off": off}
 
 
 def fetch_krisshop(get=get, brands=brands):
@@ -184,6 +184,7 @@ def check(send, sources=SOURCES, save=True, judge=news_watch.judge):
                 vault.log("🚫", "Promo skipped by gate", f"{promo['link']} · {promo['title']}")
     if not kept:
         return 0, errors
+    kept.sort(key=lambda p: -p.get("off", 100))  # partner/bank promos first, then the deepest cuts
     blocks = []
     for p in kept[:MAX_ITEMS_PER_MESSAGE]:
         shop = p["source"].startswith("KrisShop")
