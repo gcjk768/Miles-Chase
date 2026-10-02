@@ -52,6 +52,7 @@ KEYWORDS = [
     "Kris+", "Star Alliance", "award", "fare sale", "transfer bonus", "Citi", "PremierMiles",
     "Citi Rewards", "ThankYou", "Standard Chartered", "SC Rewards", "360 Rewards",
     "DBS", "UOB", "Altitude", "PRVI", "KrisShop", "Garmin", "Dyson", "Apple", "iPhone", "MacBook", "iPad",
+    "Shokz", "Sony", "Samsung", "Bose", "DJI",
 ]
 TAG = re.compile(r"<[^>]+>")
 JUDGE_MODELS = tuple(m.strip() for m in os.environ.get("JUDGE_MODELS", "haiku").split(",") if m.strip())
@@ -62,7 +63,8 @@ things that are NEW and IMPORTANT to him:
 - DBS, UOB or Citi credit card promotions worth acting on (sign-up bonuses, bonus-miles campaigns)
 - Singapore Airlines award availability (Spontaneous Escapes, Saver seats opening up, fare sales)
 - Points transfer bonuses into KrisFlyer or from his cards' programmes
-- Deals on Garmin, Dyson or Apple products paid with miles or earning bonus miles
+- Deals on popular electronics (Garmin, Dyson, Apple, Shokz, Sony, Samsung, Bose, DJI...) or big
+  KrisShop / Kris+ sales in any category, paid with miles or earning bonus miles
 Skip general travel writing, trip reports, aircraft news, other airlines' programmes he can't use,
 and anything that only repeats an item already alerted.
 

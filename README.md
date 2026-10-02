@@ -258,7 +258,7 @@ The MileLion · https://milelion.com/...
   🆕 card shows its one-line reason per item. Items it skips are logged in the vault, never re-asked.
 - **Promos** (`promo_watch.py`, same hour): the KrisFlyer promotions page on singaporeair.com (partner
   bonus-miles offers, bank sign-up and transfer bonuses) and KrisShop's product API for the brands in
-  `PROMO_BRANDS` (default Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips, Nintendo): a product
+  `PROMO_BRANDS` (default 27 popular electronics brands: Garmin, Dyson, Apple, Shokz, Sony, Samsung, Bose, JBL, DJI…), plus the most popular items of every KrisShop category at `CATEGORY_MIN_OFF`% off: a product
   counts when it's discounted, and alerts again only if its sale price changes. Brand, bank, card and
   transfer promos post straight away; the rest (hotel stays and the like) go through the same Claude
   gate. Dedup lives in `state/promos_seen.json`; the first read of a source only records what's there.
@@ -324,7 +324,8 @@ All settings go in `.env`:
 | `SPLIT_MESSAGES` | `sections` (default) posts each report section as its own message, with only the first one making a sound. `off` posts one long message. |
 | `NEWS_ALERTS` | `on` (default) or `off`: the hourly news, video and promo watch |
 | `NEWS_EVERY_MINUTES` | How often to check, default `60` (minimum 5) |
-| `PROMO_BRANDS` | Brands watched on KrisShop and in KrisFlyer promos (comma-separated); default Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips, Nintendo |
+| `PROMO_BRANDS` | Brands watched on KrisShop and in KrisFlyer promos (comma-separated); default `DEFAULT_BRANDS` in promo_watch.py (27 electronics brands incl. Garmin, Dyson, Apple, Shokz, Sony) |
+| `CATEGORY_MIN_OFF` | KrisShop any-category deals: minimum % off for the popular items of each category (default 25) |
 | `SELF_REPAIR` | `on` (default) or `off`: let Claude fix broken data after a failed job |
 | `DAILY_QUIET` | Quiet days: `line` (default) posts one short line, `silent` posts nothing, `off` always posts the full report |
 | `VAULT_DIR` | Obsidian vault folder (`/vault` on the NAS). The bot logs every report, answer, alert, reminder, points update and self-repair there, and reads recent history back into the Claude prompts so it doesn't repeat itself. Unset = off. |

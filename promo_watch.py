@@ -4,9 +4,12 @@ Sources (one request each, politely, no Claude unless something is new):
 - The KrisFlyer promotions page on singaporeair.com: server-rendered cards (partner bonus-miles
   offers, bank sign-up bonuses, transfer bonuses). A card is new when its id + wording changes.
 - KrisShop's product API (the Magento GraphQL endpoint its own site uses): one query with an
-  alias per brand in PROMO_BRANDS (default Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips,
-  Nintendo); a product counts when the brand is in its name and it's discounted. It's new when
-  its sku + sale price hasn't been seen, so a deeper cut alerts again, the same price doesn't.
+  alias per brand in PROMO_BRANDS (default DEFAULT_BRANDS, popular electronics); a product counts
+  when the brand is in its name and it's discounted. It's new when its sku + sale price hasn't been
+  seen, so a deeper cut alerts again, the same price doesn't.
+- KrisShop deals in any category: the 40 most popular products of every top-level category (one
+  request, alias per category), kept when CATEGORY_MIN_OFF % or more off and not a watched brand
+  (those come from the brand query).
 Kris+ merchant deals only exist inside the app (no public page), so they aren't watched.
 
 Dedup: state/promos_seen.json maps each promo key to its title. The first read of a source only
@@ -30,7 +33,11 @@ import vault
 KF_PROMOS_URL = "https://www.singaporeair.com/en_UK/sg/plan-travel/promotions/kf-promotions/"
 KRISSHOP_GRAPHQL = "https://kscommerce.krisshop.com/graphql"
 KRISSHOP_PRODUCT = "https://www.krisshop.com/en/product/{sku}/{url_key}.html"
-DEFAULT_BRANDS = "Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips, Nintendo"
+DEFAULT_BRANDS = ("Garmin, Dyson, Apple, Shokz, Sony, Samsung, Bose, JBL, Marshall, Bang & Olufsen, "
+                  "Sennheiser, Beats, LG, Philips, Panasonic, Nintendo, DJI, GoPro, Insta360, Fujifilm, "
+                  "Canon, Logitech, Xiaomi, Oura, Coros, Suunto, Polar")
+MAX_ALIASES = 10  # KrisShop rejects a query with more aliases
+CATEGORY_MIN_OFF = float(os.environ.get("CATEGORY_MIN_OFF", "25"))
 SEEN = run_miles.STATE / "promos_seen.json"
 SEEN_KEPT = 1000
 MAX_ITEMS_PER_MESSAGE = 10
@@ -41,9 +48,11 @@ SURE = ["credit card", "DBS", "UOB", "Citi", "HSBC", "Amex", "American Express",
 CARD = re.compile(r'<div class="card" data-card-id="([^"]*)" data-popup="([^"]*)".*?<h6>(.*?)</h6>'
                   r'.*?<p class="description">(.*?)</p>', re.S)
 TAG = re.compile(r"<[^>]+>")
-PRODUCTS = ("products(search: %s, pageSize: 40) { items { name sku url_key calculated_miles_point "
-            "special_to_date price_range { minimum_price { regular_price { value } final_price { value } "
-            "discount { percent_off } } } } }")
+ITEMS = ("{ items { name sku url_key calculated_miles_point special_to_date price_range { minimum_price { "
+         "regular_price { value } final_price { value } discount { percent_off } } } } }")
+PRODUCTS = "products(search: %s, pageSize: 40) " + ITEMS
+POPULAR = "products(filter: {category_uid: {eq: %s}}, sort: {ks_popularity: DESC}, pageSize: 40) " + ITEMS
+CATEGORIES = "{ categoryList(filters: {}) { children { name uid product_count include_in_menu } } }"
 
 
 def brands():
@@ -73,33 +82,61 @@ def fetch_krisflyer(get=get):
             for card_id, link, title, detail in CARD.findall(page)]
 
 
-def fetch_krisshop(get=get, brands=brands):
-    """Discounted KrisShop products of the watched brands, one GraphQL request for all brands."""
-    names = brands()
-    query = "{ " + " ".join(f"b{i}: " + PRODUCTS % json.dumps(b) for i, b in enumerate(names)) + " }"
+def graphql(get, query):
     data = json.loads(get(KRISSHOP_GRAPHQL, {"query": query}))
     if "data" not in data:
         raise ValueError(f"KrisShop answered {str(data)[:200]}")
-    promos = []
-    for i, brand in enumerate(names):
-        for item in (data["data"].get(f"b{i}") or {}).get("items") or []:
-            name = item.get("name") or ""
-            price = item.get("price_range", {}).get("minimum_price", {})
-            was, now = price.get("regular_price", {}).get("value"), price.get("final_price", {}).get("value")
-            off = price.get("discount", {}).get("percent_off") or 0
-            if not news_watch.matches(name, [brand]) or not (was and now and now < was and off > 0):
-                continue
-            detail = f"S${now:,.0f} (was S${was:,.0f}, ▼{off:.0f}%)"
-            if item.get("calculated_miles_point"):
-                detail += f" · {float(item['calculated_miles_point']):,.0f} miles"
-            promos.append({"source": "KrisShop", "id": f"{item.get('sku')}:{now:.2f}",
-                           "title": f"{brand} · {name.title()}", "detail": detail,
-                           "link": KRISSHOP_PRODUCT.format(sku=item.get("sku"), url_key=item.get("url_key")),
-                           "until": (item.get("special_to_date") or "")[:10]})
-    return promos
+    return data["data"]
 
 
-SOURCES = {"KrisFlyer": fetch_krisflyer, "KrisShop": fetch_krisshop}
+def aliased(get, prefix, fields):
+    """Run one aliased field per entry ({prefix}0, {prefix}1, ...), MAX_ALIASES per request."""
+    merged = {}
+    for start in range(0, len(fields), MAX_ALIASES):
+        merged.update(graphql(get, "{ " + " ".join(f"{prefix}{start + i}: {f}" for i, f in
+                                                   enumerate(fields[start:start + MAX_ALIASES])) + " }"))
+    return merged
+
+
+def product_promo(source, label, item, min_off=0):
+    """Promo dict for a KrisShop item on sale (at least min_off % off), else None."""
+    price = item.get("price_range", {}).get("minimum_price", {})
+    was, now = price.get("regular_price", {}).get("value"), price.get("final_price", {}).get("value")
+    off = price.get("discount", {}).get("percent_off") or 0
+    if not (was and now and now < was and off > 0 and off >= min_off):
+        return None
+    detail = f"S${now:,.0f} (was S${was:,.0f}, ▼{off:.0f}%)"
+    if item.get("calculated_miles_point"):
+        detail += f" · {float(item['calculated_miles_point']):,.0f} miles"
+    return {"source": source, "id": f"{item.get('sku')}:{now:.2f}",
+            "title": f"{label} · {(item.get('name') or '').title()}", "detail": detail,
+            "link": KRISSHOP_PRODUCT.format(sku=item.get("sku"), url_key=item.get("url_key")),
+            "until": (item.get("special_to_date") or "")[:10]}
+
+
+def fetch_krisshop(get=get, brands=brands):
+    """Discounted KrisShop products of the watched brands, one GraphQL request for all brands."""
+    names = brands()
+    data = aliased(get, "b", [PRODUCTS % json.dumps(b) for b in names])
+    promos = [product_promo("KrisShop", brand, item)
+              for i, brand in enumerate(names) for item in (data.get(f"b{i}") or {}).get("items") or []
+              if news_watch.matches(item.get("name") or "", [brand])]
+    return [p for p in promos if p]
+
+
+def fetch_krisshop_deals(get=get, brands=brands):
+    """Big discounts on the most popular products of every KrisShop category (two requests)."""
+    cats = [c for c in graphql(get, CATEGORIES)["categoryList"][0]["children"]
+            if c.get("include_in_menu") and c.get("product_count")]
+    data = aliased(get, "c", [POPULAR % json.dumps(c["uid"]) for c in cats])
+    watched = brands()
+    promos = [product_promo("KrisShop deals", cat["name"], item, CATEGORY_MIN_OFF)
+              for i, cat in enumerate(cats) for item in (data.get(f"c{i}") or {}).get("items") or []
+              if not news_watch.matches(item.get("name") or "", watched)]  # brands have their own query
+    return [p for p in promos if p]
+
+
+SOURCES = {"KrisFlyer": fetch_krisflyer, "KrisShop": fetch_krisshop, "KrisShop deals": fetch_krisshop_deals}
 
 
 def key(promo):
@@ -108,8 +145,8 @@ def key(promo):
 
 
 def sure(promo):
-    """Mechanically interesting: names a watched brand, a bank or card, or a transfer."""
-    return bool(news_watch.matches(f"{promo['title']} {promo['detail']}", brands() + SURE))
+    """Mechanically interesting: a KrisShop sale, or names a watched brand, a bank or card, or a transfer."""
+    return promo["source"].startswith("KrisShop") or bool(news_watch.matches(f"{promo['title']} {promo['detail']}", brands() + SURE))
 
 
 def check(send, sources=SOURCES, save=True, judge=news_watch.judge):
@@ -149,13 +186,14 @@ def check(send, sources=SOURCES, save=True, judge=news_watch.judge):
         return 0, errors
     blocks = []
     for p in kept[:MAX_ITEMS_PER_MESSAGE]:
-        lines = [f"🆕 {'🛍️' if p['source'] == 'KrisShop' else '✈️'} <b>{run_miles.esc(p['title'])}</b>",
-                 f"{'💰' if p['source'] == 'KrisShop' else '🎁'} {run_miles.esc(p['detail'])}"]
+        shop = p["source"].startswith("KrisShop")
+        lines = [f"🆕 {'🛍️' if shop else '✈️'} <b>{run_miles.esc(p['title'])}</b>",
+                 f"{'💰' if shop else '🎁'} {run_miles.esc(p['detail'])}"]
         if p.get("until"):
             lines.append(f"⏰ until {run_miles.esc(p['until'])}")
         if p.get("why"):
             lines.append(f"💡 <i>{run_miles.esc(p['why'])}</i>")
-        lines.append(f"🔗 {run_miles.link(p['link'], p['source'])}")
+        lines.append(f"🔗 {run_miles.link(p['link'], 'KrisShop' if shop else p['source'])}")
         blocks.append("\n".join(lines))
     if len(kept) > MAX_ITEMS_PER_MESSAGE:
         blocks.append(f"<i>and {len(kept) - MAX_ITEMS_PER_MESSAGE} more</i>")

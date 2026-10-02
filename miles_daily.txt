@@ -42,10 +42,12 @@ write "no updates" for a region.
 
 BRAND PROMOS
 Check for anything NEW in the last 24 hours where a KrisFlyer member can earn bonus miles or get a
-discount on Garmin, Dyson or Apple products (KrisShop, Kris+, KrisFlyer shopping partners, card or
-retailer promos that mention KrisFlyer). Use milelion.com, mainlymiles.com, krisshop.com and
-krisflyer.com. Add ONE block starting with "🛍️ Brand promos", at most 3 short lines per brand, each
-with its source link and end date. Skip brands with nothing new. If none, omit the block entirely.
+discount on popular electronics brands (Garmin, Dyson, Apple, Shokz, Sony, Samsung, Bose, DJI and
+similar), or a big KrisShop or Kris+ sale in any category (KrisShop, Kris+, KrisFlyer shopping
+partners, card or retailer promos that mention KrisFlyer). Use milelion.com, mainlymiles.com,
+krisshop.com and krisflyer.com. Add ONE block starting with "🛍️ Brand promos", at most 3 short lines
+per brand or category, each with its source link and end date. Skip anything with nothing new. If
+none, omit the block entirely.
 It counts as NEWS for STATUS.
 
 STATUS

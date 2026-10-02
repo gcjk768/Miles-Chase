@@ -924,6 +924,30 @@ class PromoWatch(TempFiles):
         self.assertNotIn("Strap", self.sent[0])  # discounted but not the brand
         self.assertNotIn("Forerunner 70", self.sent[0])  # brand but not discounted
 
+    def test_category_deals_keep_big_discounts_on_non_brand_items(self):
+        cats = {"categoryList": [{"children": [
+            {"name": "Fashion", "uid": "F", "product_count": 9, "include_in_menu": 1},
+            {"name": "Promotion", "uid": "P", "product_count": 0, "include_in_menu": 1}]}]}
+        popular = {"c0": {"items": [
+            self.product("SILK SCARF", "S1", 200, 100, 50),
+            self.product("LEATHER BELT", "B1", 100, 90, 10),  # under CATEGORY_MIN_OFF
+            self.product("GARMIN VENU", "G1", 500, 250, 50)]}}  # brand: left to the brand query
+
+        def get(url, data=None, timeout=25):
+            self.queries.append(data["query"])
+            return json.dumps({"data": cats if "categoryList" in data["query"] else popular})
+        promos = promo_watch.fetch_krisshop_deals(get)
+        self.assertEqual([p["title"] for p in promos], ["Fashion · Silk Scarf"])
+        self.assertIn('c0: products(filter: {category_uid: {eq: "F"}}, sort: {ks_popularity: DESC}', self.queries[1])
+        self.assertNotIn('"P"', self.queries[1])  # empty category skipped
+        self.assertTrue(promo_watch.sure(promos[0]))  # KrisShop sales skip the Claude gate
+
+    def test_many_brands_are_split_into_requests_of_at_most_10_aliases(self):
+        os.environ["PROMO_BRANDS"] = ", ".join(f"Brand{n}" for n in range(23))
+        promo_watch.fetch_krisshop(self.get)
+        self.assertEqual([q.count("products(") for q in self.queries], [10, 10, 3])
+        self.assertIn('b22: products(search: "Brand22"', self.queries[2])
+
     def test_ambiguous_promos_go_through_the_gate(self):
         self.check()
         self.page += ('<div class="card" data-card-id="ytl" data-popup="https://sia/ytl"><h6>YTL Hotels</h6>'

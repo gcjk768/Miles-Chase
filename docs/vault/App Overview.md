@@ -1,6 +1,6 @@
 ---
 tags: [active]
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 # App Overview
 
@@ -14,7 +14,7 @@ One container (`miles-chase`), one loop: [scheduler.py](../../scheduler.py) runs
 | [repair.py](../../repair.py) | `claude -p` self-repair, may only edit `data/` and `state/`. |
 | [healthcheck.py](../../healthcheck.py) | Docker healthcheck; kills a stuck scheduler so Docker restarts it. Unhealthy/restarting also trips NAS Doctor. |
 | [news_watch.py](../../news_watch.py) | Hourly: blog posts + YouTube videos (conditional GET, `state/news_feeds.json`), keyword prefilter, then the **Claude importance gate** `judge()` (haiku → unfiltered; `JUDGE_MODELS`) only when something is new; 🆕 card with `💡 reason`. Dedup: `state/news_seen.json` + vault `alerted_links()`. |
-| [promo_watch.py](../../promo_watch.py) | Hourly: KrisFlyer promotions page cards + KrisShop GraphQL discounts for `PROMO_BRANDS`; brand/bank/transfer promos sent directly, the rest via `news_watch.judge`. 🛍️ MILES PROMOS card. Dedup `state/promos_seen.json`. |
+| [promo_watch.py](../../promo_watch.py) | Hourly: KrisFlyer promotions page cards + KrisShop GraphQL discounts for `PROMO_BRANDS` (27 electronics brands by default) + `KrisShop deals` (popular items of every category at `CATEGORY_MIN_OFF`% off), ≤10 aliases per request; KrisShop sales and brand/bank/transfer promos sent directly, the rest via `news_watch.judge`. 🛍️ MILES PROMOS card. Dedup `state/promos_seen.json`. |
 | [reminders.py](../../reminders.py) | Expiry reminders (09:00). |
 | [vault.py](../../vault.py) | Obsidian vault (`VAULT_DIR`, `/vault` on the NAS): `Activity/YYYY/MM/YYYY-MM-DD.md` movement log, `Deals/` and `Cards/` entity notes with append-only `## History`, Home.md MOC (this month + latest), `memory()` capped 4000 chars newest-first for the prompts, `migrate()` for old flat notes. Best-effort, never raises. |
 | [miles_daily.txt](../../miles_daily.txt), [miles_monthly.txt](../../miles_monthly.txt) | Prompts. |
