@@ -3,8 +3,8 @@
 Reads the blogs' RSS feeds and the YouTube channels' feeds (conditional requests: a feed that
 answers 304 Not Modified costs nothing), keeps the posts that mention KrisFlyer, Singapore
 Airlines, your cards or a city on your watchlist, and any new video from a miles channel (general
-money channels only when it's about miles). Only when there is something new, Claude (opus, then
-sonnet; if both fail the items go out unfiltered) is asked which of them matter to James
+money channels only when it's about miles). Only when there is something new, Claude (haiku by
+default, JUDGE_MODELS; if it fails the items go out unfiltered) is asked which of them matter to James
 (KrisFlyer earn/burn, DBS/UOB/Citi card promos, SQ award availability, transfer bonuses) and one
 🆕 card is sent for those, with Claude's one-line reason. Silent otherwise. Posts already seen are
 remembered in state/news_seen.json, and a post the vault's Activity log shows was
@@ -14,6 +14,7 @@ a flood of old posts.
 
 import html
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -53,7 +54,7 @@ KEYWORDS = [
     "DBS", "UOB", "Altitude", "PRVI", "KrisShop", "Garmin", "Dyson", "Apple", "iPhone", "MacBook", "iPad",
 ]
 TAG = re.compile(r"<[^>]+>")
-JUDGE_MODELS = ("opus", "sonnet")
+JUDGE_MODELS = tuple(m.strip() for m in os.environ.get("JUDGE_MODELS", "haiku").split(",") if m.strip())
 JUDGE_PROMPT = """You screen miles news for James, a Singapore-based KrisFlyer collector who holds
 Citi Rewards, Citi PremierMiles and Standard Chartered cards. He only wants to be interrupted for
 things that are NEW and IMPORTANT to him:
@@ -140,7 +141,7 @@ def load_seen():
 
 
 def judge(items):
-    """Ask Claude which new items matter: {index: reason}. Opus, then sonnet; on failure keep all."""
+    """Ask Claude which new items matter: {index: reason}. JUDGE_MODELS in order (haiku); on failure keep all."""
     listing = "\n".join(f"{i}. [{name}] {title} — {summary}" for i, (name, title, _, summary)
                         in enumerate(items, 1))
     for model in JUDGE_MODELS:

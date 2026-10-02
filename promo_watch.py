@@ -11,8 +11,8 @@ Kris+ merchant deals only exist inside the app (no public page), so they aren't 
 
 Dedup: state/promos_seen.json maps each promo key to its title. The first read of a source only
 records what's there. Promos that name one of the brands, a bank, a card or a transfer are sent
-as they are; the rest (hotel stays and the like) go through the news gate (Claude opus, then
-sonnet) which keeps only what matters to James. One 🆕 card per run, silent when nothing is new.
+as they are; the rest (hotel stays and the like) go through the news gate (Claude haiku,
+JUDGE_MODELS) which keeps only what matters to James. One 🆕 card per run, silent when nothing is new.
 """
 
 import hashlib

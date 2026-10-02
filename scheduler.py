@@ -6,7 +6,7 @@ Singapore time:
     08:07 on the 1st  `run_miles.py monthly`, the coach report (Claude)
     09:00 daily       `run_miles.py reminders`, expiry reminders (no Claude)
     every hour, 24/7  `run_miles.py news` + `run_miles.py promos`: new blog posts / videos and new
-                      KrisFlyer / KrisShop promos; Claude (opus, then sonnet) judges what matters
+                      KrisFlyer / KrisShop promos; Claude (haiku) judges what matters
 
 If the machine was off at a job's time, the job runs as soon as it's back, as long as it's
 still the same day. Between jobs it answers Telegram commands such as /points.

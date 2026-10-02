@@ -253,7 +253,7 @@ The MileLion · https://milelion.com/...
 - If a blog is down, it's skipped and tried again next time.
 - Feeds are fetched with conditional requests (ETag / Last-Modified in `state/news_feeds.json`), so an
   unchanged feed costs one tiny 304 reply. Only when there are new matching items is Claude asked
-  (opus, then sonnet; if both fail the items go out unfiltered) which of them matter to you:
+  (haiku, set by `JUDGE_MODELS`; if it fails the items go out unfiltered) which of them matter to you:
   KrisFlyer earn/burn, DBS/UOB/Citi card promos, SQ award availability, transfer bonuses. The
   🆕 card shows its one-line reason per item. Items it skips are logged in the vault, never re-asked.
 - **Promos** (`promo_watch.py`, same hour): the KrisFlyer promotions page on singaporeair.com (partner

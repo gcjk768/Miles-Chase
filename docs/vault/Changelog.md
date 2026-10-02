@@ -4,6 +4,9 @@ updated: 2026-10-01
 ---
 # Changelog
 
+## 2026-10-03
+- chore: every Claude call on haiku to save tokens (James): `CLAUDE_MODEL=haiku` for reports, /ask and repair; news/promo gate `JUDGE_MODELS` default haiku (was opus → sonnet). [news_watch.py](../../news_watch.py)
+
 ## 2026-10-02
 - feat: the news watch runs **every hour, 24/7** (`NEWS_EVERY_MINUTES` default 60) and posts a 🆕 card the moment something new and important appears. Feeds use conditional requests (ETag/Last-Modified in `state/news_feeds.json`, 304 = nothing to parse). Claude is asked **only when there are new keyword-matched items**: `news_watch.judge` (opus, then sonnet, then unfiltered) returns `N: reason` lines or SKIP; kept items show `💡 reason`, skipped ones are logged to the vault (🚫) and never re-asked. Keywords now include DBS/UOB/Altitude/PRVI. `run_claude(..., model=)` added. [news_watch.py](../../news_watch.py), [scheduler.py](../../scheduler.py)
 - feat: **promo watch** ([promo_watch.py](../../promo_watch.py), same hourly slot as `news`, job `promos`): the KrisFlyer promotions page on singaporeair.com (27 partner cards: hotels, banks, transfer bonuses; key = card id + wording hash) and KrisShop's GraphQL product API, one request with an alias per brand in `PROMO_BRANDS` (default Garmin, Dyson, Apple, Samsung, Sony, Bose, LG, Philips, Nintendo; key = sku + sale price, so a deeper cut re-alerts). Brand/bank/card/transfer promos post straight away, hotel-style ones go through the Claude gate. 🛍️ MILES PROMOS card: `🆕 brand · item`, 💰 price (was, ▼%) · miles, ⏰ until, 💡 why, 🔗 short link. Dedup in `state/promos_seen.json`; first read of a source only records. Kris+ merchant deals have no public page, so they aren't watched.
