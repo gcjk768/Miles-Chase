@@ -2,7 +2,9 @@
 
 Layout under $VAULT_DIR (on the NAS: /volume1/James/Obsidian/Miles Chase, mounted at /vault):
     Home.md                 map of contents, rewritten after each event
-    Activity/YYYY-MM-DD.md  one line per event: - HH:MM emoji **what** · detail · [[entity]] (SGT)
+    Activity/YYYY/MM/YYYY-MM-DD.md  one line per event: - HH:MM emoji **what** · detail · [[entity]]
+                            (SGT). Flat Activity/YYYY-MM-DD.md notes from older versions are
+                            moved into YYYY/MM/ by migrate(), called once at startup.
     Deals/<post title>.md   one note per deal or promo alerted, append-only ## History
     Cards/<card name>.md    one note per card or programme: balance, expiry, ## History
 
@@ -22,6 +24,7 @@ SGT = timezone(timedelta(hours=8))
 MEMORY_CHARS = 4000
 MEMORY_DAYS = 7          # Activity notes read back as memory
 ALERTED_DAYS = 120       # Activity notes scanned for links already alerted
+DAY_NOTE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 URL = re.compile(r"https?://[^\s)\]>]+")
 UNSAFE = re.compile(r'[\\/:*?"<>|#^\[\]\n\r\t]+')
 
@@ -68,7 +71,7 @@ def log(emoji, what, detail="", entity=None, now=None):
         return
     try:
         now = now or datetime.now(SGT)
-        day = base / "Activity" / f"{now:%Y-%m-%d}.md"
+        day = day_note(base, now)
         parts = [f"- {now:%H:%M} {emoji} **{_one_line(what, 80)}**"]
         if detail:
             parts.append(_one_line(detail))
@@ -86,6 +89,42 @@ def log(emoji, what, detail="", entity=None, now=None):
         _home(base, now)
     except Exception as error:  # best-effort: never lose an alert over the vault
         _warn(error)
+
+
+def day_note(base, when):
+    return base / "Activity" / f"{when:%Y}" / f"{when:%m}" / f"{when:%Y-%m-%d}.md"
+
+
+def day_notes(base):
+    """All Activity day notes, newest first."""
+    folder = base / "Activity"
+    notes = [p for p in folder.rglob("*.md") if DAY_NOTE.match(p.stem)] if folder.is_dir() else []
+    return sorted(notes, key=lambda p: p.stem, reverse=True)
+
+
+def migrate():
+    """Move flat Activity/YYYY-MM-DD.md notes into Activity/YYYY/MM/ (move, never delete).
+
+    Returns how many were moved. Never raises."""
+    base = root()
+    if not base:
+        return 0
+    moved = 0
+    try:
+        for old in sorted((base / "Activity").glob("*.md")):
+            if not DAY_NOTE.match(old.stem):
+                continue
+            new = day_note(base, datetime.strptime(old.stem, "%Y-%m-%d"))
+            if new.exists():  # both exist: keep both rather than overwrite either
+                continue
+            new.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(old, new)
+            moved += 1
+        if moved:
+            _home(base, datetime.now(SGT))
+    except Exception as error:
+        _warn(error)
+    return moved
 
 
 def entity(folder, title, summary, history, now=None):
@@ -116,8 +155,10 @@ def _latest(folder, count):
 
 
 def _home(base, now):
-    days = sorted((base / "Activity").glob("*.md"), reverse=True)[:7]
-    links = lambda paths, folder: "\n".join(f"- [[{folder}/{p.stem}]]" for p in paths) or "- (none yet)"
+    notes = day_notes(base)
+    month = f"{now:%Y-%m}"
+    links = lambda paths, folder: "\n".join(
+        f"- [[{folder}/{p.relative_to(base / folder).with_suffix('').as_posix()}]]" for p in paths) or "- (none yet)"
     _write(base / "Home.md", f"""---
 tags: [active]
 updated: {now:%Y-%m-%d}
@@ -127,12 +168,15 @@ updated: {now:%Y-%m-%d}
 KrisFlyer miles bot (@jameskoh_miles_bot, James Channel topic 2988). It writes what it did here
 and reads it back before each Claude call, so it doesn't repeat tips or re-alert news.
 
-- `Activity/` one note per day, one line per event (SGT)
+- `Activity/YYYY/MM/` one note per day, one line per event (SGT)
 - `Deals/` one note per deal or promo alerted
 - `Cards/` one note per card or points programme (balance and expiry history)
 
+## This month · {month}
+{links([p for p in notes if p.stem.startswith(month)], "Activity")}
+
 ## Latest activity
-{links(days, "Activity")}
+{links(notes[:7], "Activity")}
 
 ## Recent deals
 {links(_latest(base / "Deals", 10), "Deals")}
@@ -155,7 +199,7 @@ def memory(folders=(), max_chars=MEMORY_CHARS, days=MEMORY_DAYS):
         return ""
     try:
         out = []
-        for day in sorted((base / "Activity").glob("*.md"), reverse=True)[:days]:
+        for day in day_notes(base)[:days]:
             events = [l for l in day.read_text(encoding="utf-8", errors="replace").splitlines()
                       if l.startswith("- ")]
             out += [f"{day.stem} {l[2:]}" for l in reversed(events)]
@@ -176,7 +220,7 @@ def alerted_links(days=ALERTED_DAYS):
         return set()
     try:
         found = set()
-        for day in sorted((base / "Activity").glob("*.md"), reverse=True)[:days]:
+        for day in day_notes(base)[:days]:
             found.update(URL.findall(day.read_text(encoding="utf-8", errors="replace")))
         return found
     except Exception as error:
